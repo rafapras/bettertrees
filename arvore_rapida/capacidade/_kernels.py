@@ -1,0 +1,818 @@
+"""Kernels Numba das peças de capacidade (Newton sobre histogramas binados).
+
+Mesma regra de ``arvore_rapida.kernels``: todo kernel que chama outro kernel
+fica neste arquivo (``cache=True`` invalida por arquivo), sem fastmath.
+
+Convenções:
+- bins uint8, NaN (ou linha inelegível) no bin 0; ``nb[j]`` bins usados por j;
+- um corte ``t`` manda à esquerda os bins ``<= t`` (logo o bin 0, NaN, vai
+  sempre para a esquerda; ``t = 0`` é "NaN × resto");
+- histogramas têm três canais: G = soma de g, H = soma de h, W = soma de pesos;
+- pontuação de uma folha: G²/(H + λ); ganho = filhos − pai (≥ 0 se aceito);
+- um filho só é válido com W >= ``min_weight``.
+"""
+
+import numpy as np
+from numba import njit, prange
+
+
+@njit(cache=True)
+def logistic_grad_hess(y, margin, w):
+    """Gradiente e hessiana da log-loss com alvo y em [0, 1] (aceita alvo suave)."""
+    n = len(y)
+    g = np.empty(n)
+    h = np.empty(n)
+    for i in range(n):
+        m = margin[i]
+        if m >= 0:
+            p = 1.0 / (1.0 + np.exp(-m))
+        else:
+            e = np.exp(m)
+            p = e / (1.0 + e)
+        g[i] = w[i] * (p - y[i])
+        h[i] = w[i] * max(p * (1.0 - p), 1e-16)
+    return g, h
+
+
+@njit(cache=True)
+def _score(G, H, lam):
+    return G * G / (H + lam)
+
+
+@njit(cache=True, parallel=True)
+def hist_1d(Xb, g, h, w, B):
+    """Histograma (p, B, 3) de (G, H, W) por feature e bin."""
+    n, p = Xb.shape
+    out = np.zeros((p, B, 3))
+    for j in prange(p):
+        for i in range(n):
+            b = Xb[i, j]
+            out[j, b, 0] += g[i]
+            out[j, b, 1] += h[i]
+            out[j, b, 2] += w[i]
+    return out
+
+
+@njit(cache=True)
+def _best_cut_hist(hist, nb, lam, min_weight):
+    """Melhor corte de um histograma (nb, 3); devolve (ganho, t) ou (0, -1)."""
+    G = 0.0
+    H = 0.0
+    W = 0.0
+    for b in range(nb):
+        G += hist[b, 0]
+        H += hist[b, 1]
+        W += hist[b, 2]
+    parent = _score(G, H, lam)
+    best_gain = 0.0
+    best_t = -1
+    GL = 0.0
+    HL = 0.0
+    WL = 0.0
+    for t in range(nb - 1):
+        GL += hist[t, 0]
+        HL += hist[t, 1]
+        WL += hist[t, 2]
+        if min_weight > WL or min_weight > W - WL:
+            continue
+        gain = _score(GL, HL, lam) + _score(G - GL, H - HL, lam) - parent
+        if gain > best_gain:
+            best_gain = gain
+            best_t = t
+    return best_gain, best_t
+
+
+@njit(cache=True)
+def best_cut_1d(hist, nb, lam, min_weight):
+    """Melhor corte por feature: (ganho[p], t[p]); t = -1 sem corte válido."""
+    p = hist.shape[0]
+    gains = np.zeros(p)
+    cuts = np.full(p, -1, dtype=np.int64)
+    for j in range(p):
+        gains[j], cuts[j] = _best_cut_hist(hist[j], nb[j], lam, min_weight)
+    return gains, cuts
+
+
+@njit(cache=True)
+def _best_quadrant_hist(h2, na, nb, lam, min_weight):
+    """Melhor par de cortes (ta, tb) com 4 células; (ganho, ta, tb)."""
+    # prefixo 2D: P[a, b] = soma das células com bin_i <= a e bin_j <= b
+    P = np.zeros((na, nb, 3))
+    for a in range(na):
+        for b in range(nb):
+            for c in range(3):
+                v = h2[a, b, c]
+                if a > 0:
+                    v += P[a - 1, b, c]
+                if b > 0:
+                    v += P[a, b - 1, c]
+                if a > 0 and b > 0:
+                    v -= P[a - 1, b - 1, c]
+                P[a, b, c] = v
+    T = P[na - 1, nb - 1]
+    parent = _score(T[0], T[1], lam)
+    best_gain = 0.0
+    best_a = -1
+    best_b = -1
+    for ta in range(na - 1):
+        for tb in range(nb - 1):
+            ll0 = P[ta, tb, 0]
+            ll1 = P[ta, tb, 1]
+            ll2 = P[ta, tb, 2]
+            lr0 = P[ta, nb - 1, 0] - ll0
+            lr1 = P[ta, nb - 1, 1] - ll1
+            lr2 = P[ta, nb - 1, 2] - ll2
+            rl0 = P[na - 1, tb, 0] - ll0
+            rl1 = P[na - 1, tb, 1] - ll1
+            rl2 = P[na - 1, tb, 2] - ll2
+            rr0 = T[0] - ll0 - lr0 - rl0
+            rr1 = T[1] - ll1 - lr1 - rl1
+            rr2 = T[2] - ll2 - lr2 - rl2
+            if (ll2 < min_weight or lr2 < min_weight or rl2 < min_weight
+                    or rr2 < min_weight):
+                continue
+            gain = (_score(ll0, ll1, lam) + _score(lr0, lr1, lam)
+                    + _score(rl0, rl1, lam) + _score(rr0, rr1, lam) - parent)
+            if gain > best_gain:
+                best_gain = gain
+                best_a = ta
+                best_b = tb
+    return best_gain, best_a, best_b
+
+
+@njit(cache=True, parallel=True)
+def quadrant_scores(Xb, g, h, w, nb, pairs, lam, min_weight):
+    """FAST: melhor quadrante para cada par (i, j); (ganho, ta, tb) por par."""
+    n = Xb.shape[0]
+    k = pairs.shape[0]
+    gains = np.zeros(k)
+    ta = np.full(k, -1, dtype=np.int64)
+    tb = np.full(k, -1, dtype=np.int64)
+    for q in prange(k):
+        fi = pairs[q, 0]
+        fj = pairs[q, 1]
+        h2 = np.zeros((nb[fi], nb[fj], 3))
+        for r in range(n):
+            a = Xb[r, fi]
+            b = Xb[r, fj]
+            h2[a, b, 0] += g[r]
+            h2[a, b, 1] += h[r]
+            h2[a, b, 2] += w[r]
+        gains[q], ta[q], tb[q] = _best_quadrant_hist(h2, nb[fi], nb[fj], lam,
+                                                     min_weight)
+    return gains, ta, tb
+
+
+@njit(cache=True, parallel=True)
+def combination_scores(X, g, h, w, pairs, kind, n_bins, lam, min_weight):
+    """Melhor corte único numa combinação de cada par, com bins próprios.
+
+    kind 0: log(x_i) − log(x_j) (razão; exige ambos > 0);
+    kind 1: x_i − x_j (diferença; mesma unidade é responsabilidade de quem chama).
+    Linhas inelegíveis (NaN, não positivas na razão) vão para o bin 0.
+    Devolve (ganho, limiar em z, fração elegível) por par; limiar NaN sem corte.
+    """
+    n = X.shape[0]
+    k = pairs.shape[0]
+    gains = np.zeros(k)
+    thresholds = np.full(k, np.nan)
+    valid_frac = np.zeros(k)
+    for q in prange(k):
+        fi = pairs[q, 0]
+        fj = pairs[q, 1]
+        z = np.empty(n)
+        ok = np.zeros(n, dtype=np.bool_)
+        nv = 0
+        for r in range(n):
+            a = X[r, fi]
+            b = X[r, fj]
+            if np.isnan(a) or np.isnan(b):
+                continue
+            if kind == 0:
+                if a <= 0 or b <= 0:
+                    continue
+                z[r] = np.log(a) - np.log(b)
+            else:
+                z[r] = a - b
+            ok[r] = True
+            nv += 1
+        valid_frac[q] = nv / n
+        if nv < 2:
+            continue
+        zs = np.empty(nv)
+        c = 0
+        for r in range(n):
+            if ok[r]:
+                zs[c] = z[r]
+                c += 1
+        zs.sort()
+        # cortes em quantis, sem repetição
+        edges = np.empty(n_bins - 1)
+        ne = 0
+        for s in range(1, n_bins):
+            v = zs[(s * nv) // n_bins]
+            if (ne == 0 or v > edges[ne - 1]) and v < zs[nv - 1]:
+                edges[ne] = v
+                ne += 1
+        nbq = ne + 2  # bin 0 inelegível, 1..ne+1 finitos
+        hq = np.zeros((nbq, 3))
+        for r in range(n):
+            if ok[r]:
+                lo = 0
+                hi = ne
+                v = z[r]
+                while lo < hi:
+                    mid = (lo + hi) // 2
+                    if edges[mid] < v:
+                        lo = mid + 1
+                    else:
+                        hi = mid
+                b = lo + 1
+            else:
+                b = 0
+            hq[b, 0] += g[r]
+            hq[b, 1] += h[r]
+            hq[b, 2] += w[r]
+        gain, t = _best_cut_hist(hq, nbq, lam, min_weight)
+        gains[q] = gain
+        if t >= 1:
+            thresholds[q] = edges[t - 1]
+        elif t == 0:
+            thresholds[q] = -np.inf  # só "inelegível × resto"
+    return gains, thresholds, valid_frac
+
+
+@njit(cache=True, parallel=True)
+def best_depth2_reference(Xb, g, h, w, nb, lam, min_weight):
+    """Árvore Newton de profundidade 2 ótima por busca exaustiva nos bins.
+
+    Para cada raiz (f1, t1), cada filho escolhe o melhor corte único (ou fica
+    folha se nenhum ganha). Devolve, por f1, (ganho, t1, fL, tL, fR, tR);
+    quem chama escolhe o f1 de maior ganho (empate: menor f1).
+    Custo O(n p²) de memória de passagem e O(p · B² · p) de busca.
+    """
+    n, p = Xb.shape
+    B = 0
+    for j in range(p):
+        if nb[j] > B:
+            B = nb[j]
+    res_gain = np.zeros(p)
+    res = np.full((p, 5), -1, dtype=np.int64)
+    Gt = 0.0
+    Ht = 0.0
+    for i in range(n):
+        Gt += g[i]
+        Ht += h[i]
+    parent = _score(Gt, Ht, lam)
+    for f1 in prange(p):
+        n1 = nb[f1]
+        hist = np.zeros((n1, p, B, 3))
+        for i in range(n):
+            b1 = Xb[i, f1]
+            for f2 in range(p):
+                b2 = Xb[i, f2]
+                hist[b1, f2, b2, 0] += g[i]
+                hist[b1, f2, b2, 1] += h[i]
+                hist[b1, f2, b2, 2] += w[i]
+        total = np.zeros((p, B, 3))
+        for b1 in range(n1):
+            total += hist[b1]
+        left = np.zeros((p, B, 3))
+        right = np.empty((p, B, 3))
+        best = 0.0
+        for t1 in range(n1 - 1):
+            left += hist[t1]
+            GL = 0.0
+            HL = 0.0
+            WL = 0.0
+            for b2 in range(nb[0]):
+                GL += left[0, b2, 0]
+                HL += left[0, b2, 1]
+                WL += left[0, b2, 2]
+            GR = Gt - GL
+            HR = Ht - HL
+            WR = 0.0
+            for b2 in range(nb[0]):
+                WR += total[0, b2, 2] - left[0, b2, 2]
+            if min_weight > WL or min_weight > WR:
+                continue
+            right[:] = total - left
+            root_gain = _score(GL, HL, lam) + _score(GR, HR, lam) - parent
+            bl = 0.0
+            fl = -1
+            tl = -1
+            br = 0.0
+            fr = -1
+            tr = -1
+            for f2 in range(p):
+                gl, cl = _best_cut_hist(left[f2], nb[f2], lam, min_weight)
+                if gl > bl:
+                    bl = gl
+                    fl = f2
+                    tl = cl
+                gr, cr = _best_cut_hist(right[f2], nb[f2], lam, min_weight)
+                if gr > br:
+                    br = gr
+                    fr = f2
+                    tr = cr
+            gain = root_gain + bl + br
+            if gain > best:
+                best = gain
+                res[f1, 0] = t1
+                res[f1, 1] = fl
+                res[f1, 2] = tl
+                res[f1, 3] = fr
+                res[f1, 4] = tr
+        res_gain[f1] = best
+    return res_gain, res
+
+
+@njit(cache=True)
+def depth2_leaf_ids(Xb, f1, t1, fl, tl, fr, tr):
+    """Folha (0..3) de cada linha; filho sem corte (f = -1) usa só a 1ª folha do lado."""
+    n = Xb.shape[0]
+    ids = np.empty(n, dtype=np.int64)
+    for i in range(n):
+        if Xb[i, f1] <= t1:
+            ids[i] = 0 if (fl < 0 or Xb[i, fl] <= tl) else 1
+        else:
+            ids[i] = 2 if (fr < 0 or Xb[i, fr] <= tr) else 3
+    return ids
+
+
+@njit(cache=True)
+def newton_leaf_values(ids, g, h, n_leaves, lam):
+    """Valor de Newton por folha: −G/(H + λ)."""
+    G = np.zeros(n_leaves)
+    H = np.zeros(n_leaves)
+    for i in range(len(ids)):
+        G[ids[i]] += g[i]
+        H[ids[i]] += h[i]
+    out = np.zeros(n_leaves)
+    for k in range(n_leaves):
+        out[k] = -G[k] / (H[k] + lam)
+    return out
+
+
+# ---------------------------------------------------------------- profundidade 3
+
+@njit(cache=True)
+def _pair_cell(L, T, mode, f2, b2, f3, b3, c):
+    """Célula do tensor de pares do lado: mode 0 = L, mode 1 = T − L."""
+    if mode == 0:
+        return L[f2, b2, f3, b3, c]
+    return T[f2, b2, f3, b3, c] - L[f2, b2, f3, b3, c]
+
+
+@njit(cache=True)
+def _solve_d2_from_pairs(L, T, mode, nb, lam, min_weight):
+    """Árvore d2 ótima de um lado dado o tensor de pares S[f2,b2,f3,b3,(G,H,W)].
+
+    Devolve (ganho sobre o lado como folha, f2, t2, fl, tl, fr, tr); f2 = -1
+    quando nenhum corte vale (o lado fica folha).
+    """
+    p = L.shape[0]
+    B = L.shape[1]
+    # marginal do lado por feature (via f2 = 0: soma sobre b2)
+    M = np.zeros((p, B, 3))
+    for b2 in range(nb[0]):
+        for f3 in range(p):
+            for b3 in range(nb[f3]):
+                for c in range(3):
+                    M[f3, b3, c] += _pair_cell(L, T, mode, 0, b2, f3, b3, c)
+    G = 0.0
+    H = 0.0
+    W = 0.0
+    for b3 in range(nb[0]):
+        G += M[0, b3, 0]
+        H += M[0, b3, 1]
+        W += M[0, b3, 2]
+    parent = _score(G, H, lam)
+    best = 0.0
+    out = np.full(6, -1, dtype=np.int64)
+    left = np.zeros((p, B, 3))
+    right = np.zeros((p, B, 3))
+    for f2 in range(p):
+        left[:] = 0.0
+        right[:] = M
+        GL = 0.0
+        HL = 0.0
+        WL = 0.0
+        for t2 in range(nb[f2] - 1):
+            for f3 in range(p):
+                for b3 in range(nb[f3]):
+                    for c in range(3):
+                        v = _pair_cell(L, T, mode, f2, t2, f3, b3, c)
+                        left[f3, b3, c] += v
+                        right[f3, b3, c] -= v
+            GL = 0.0
+            HL = 0.0
+            WL = 0.0
+            for b3 in range(nb[0]):
+                GL += left[0, b3, 0]
+                HL += left[0, b3, 1]
+                WL += left[0, b3, 2]
+            if min_weight > WL or min_weight > W - WL:
+                continue
+            gain = _score(GL, HL, lam) + _score(G - GL, H - HL, lam) - parent
+            bl = 0.0
+            fl = -1
+            tl = -1
+            br = 0.0
+            fr = -1
+            tr = -1
+            for f3 in range(p):
+                gl, cl = _best_cut_hist(left[f3], nb[f3], lam, min_weight)
+                if gl > bl:
+                    bl = gl
+                    fl = f3
+                    tl = cl
+                gr, cr = _best_cut_hist(right[f3], nb[f3], lam, min_weight)
+                if gr > br:
+                    br = gr
+                    fr = f3
+                    tr = cr
+            gain += bl + br
+            if gain > best:
+                best = gain
+                out[0] = f2
+                out[1] = t2
+                out[2] = fl
+                out[3] = tl
+                out[4] = fr
+                out[5] = tr
+    return best, out
+
+
+@njit(cache=True, parallel=True)
+def best_depth3(Xb, g, h, w, nb, lam, min_weight):
+    """Árvore Newton de profundidade 3 ótima (busca exaustiva nos bins).
+
+    Para cada raiz (f1, t1), cada filho recebe a árvore d2 ótima do seu lado
+    (ou fica folha). Tensor de pares (p, B, p, B, 3) por thread: use com p e
+    B pequenos (quem chama limita as features). Devolve, por f1,
+    (ganho, t1, esquerda[6], direita[6]) no formato de ``_solve_d2_from_pairs``.
+    """
+    n, p = Xb.shape
+    B = 0
+    for j in range(p):
+        if nb[j] > B:
+            B = nb[j]
+    T = np.zeros((p, B, p, B, 3))
+    for f2 in prange(p):
+        for i in range(n):
+            b2 = Xb[i, f2]
+            for f3 in range(p):
+                b3 = Xb[i, f3]
+                T[f2, b2, f3, b3, 0] += g[i]
+                T[f2, b2, f3, b3, 1] += h[i]
+                T[f2, b2, f3, b3, 2] += w[i]
+    Gt = 0.0
+    Ht = 0.0
+    Wt = 0.0
+    for i in range(n):
+        Gt += g[i]
+        Ht += h[i]
+        Wt += w[i]
+    parent = _score(Gt, Ht, lam)
+    res_gain = np.zeros(p)
+    res = np.full((p, 13), -1, dtype=np.int64)
+    for f1 in prange(p):
+        # linhas agrupadas pelo bin de f1 (counting sort)
+        counts = np.zeros(nb[f1] + 1, dtype=np.int64)
+        for i in range(n):
+            counts[Xb[i, f1] + 1] += 1
+        for b in range(nb[f1]):
+            counts[b + 1] += counts[b]
+        order = np.empty(n, dtype=np.int64)
+        fill = counts.copy()
+        for i in range(n):
+            b = Xb[i, f1]
+            order[fill[b]] = i
+            fill[b] += 1
+        L = np.zeros((p, B, p, B, 3))
+        GL = 0.0
+        HL = 0.0
+        WL = 0.0
+        best = 0.0
+        for t1 in range(nb[f1] - 1):
+            for k in range(counts[t1], counts[t1 + 1]):
+                i = order[k]
+                GL += g[i]
+                HL += h[i]
+                WL += w[i]
+                for f2 in range(p):
+                    b2 = Xb[i, f2]
+                    for f3 in range(p):
+                        b3 = Xb[i, f3]
+                        L[f2, b2, f3, b3, 0] += g[i]
+                        L[f2, b2, f3, b3, 1] += h[i]
+                        L[f2, b2, f3, b3, 2] += w[i]
+            if min_weight > WL or Wt - WL < min_weight:
+                continue
+            root = _score(GL, HL, lam) + _score(Gt - GL, Ht - HL, lam) - parent
+            gl, sl = _solve_d2_from_pairs(L, T, 0, nb, lam, min_weight)
+            gr, sr = _solve_d2_from_pairs(L, T, 1, nb, lam, min_weight)
+            gain = root + gl + gr
+            if gain > best:
+                best = gain
+                res[f1, 0] = t1
+                for c in range(6):
+                    res[f1, 1 + c] = sl[c]
+                    res[f1, 7 + c] = sr[c]
+        res_gain[f1] = best
+    return res_gain, res
+
+
+# ---------------------------------------------------------------- árvores pequenas
+
+@njit(cache=True)
+def small_tree_leaf_ids(Xb, feature, threshold, left, right):
+    """Nó-folha de cada linha numa árvore pequena (bins; x <= t vai à esquerda)."""
+    n = Xb.shape[0]
+    ids = np.empty(n, dtype=np.int64)
+    for i in range(n):
+        node = 0
+        while left[node] != -1:
+            if Xb[i, feature[node]] <= threshold[node]:
+                node = left[node]
+            else:
+                node = right[node]
+        ids[i] = node
+    return ids
+
+
+@njit(cache=True, parallel=True)
+def node_hist(Xb, g, h, w, node_of_row, n_nodes, B):
+    """Histograma (n_nodes, p, B, 3) das linhas agrupadas por nó."""
+    n, p = Xb.shape
+    out = np.zeros((n_nodes, p, B, 3))
+    for j in prange(p):
+        for i in range(n):
+            k = node_of_row[i]
+            if k < 0:
+                continue
+            b = Xb[i, j]
+            out[k, j, b, 0] += g[i]
+            out[k, j, b, 1] += h[i]
+            out[k, j, b, 2] += w[i]
+    return out
+
+
+@njit(cache=True, parallel=True)
+def best_depth2(Xb, g, h, w, nb, lam, min_weight):
+    """Árvore d2 ótima; mesmo resultado BIT A BIT de ``best_depth2_reference``.
+
+    Troca a ordem dos laços: para cada raiz f1, um par (f1, f2) por vez com um
+    histograma (nb[f1], B, 3) que cabe no cache, sobre X em colunas. Cada
+    célula soma as linhas na mesma ordem (i crescente) e as somas acumuladas
+    por t1 seguem a mesma ordem, então os ganhos e os desempates (f2 e t1
+    crescentes, ``>`` estrito) são idênticos.
+    """
+    n, p = Xb.shape
+    B = 0
+    for j in range(p):
+        if nb[j] > B:
+            B = nb[j]
+    XT = np.empty((p, n), dtype=np.uint8)
+    for i in range(n):
+        for j in range(p):
+            XT[j, i] = Xb[i, j]
+    Gt = 0.0
+    Ht = 0.0
+    for i in range(n):
+        Gt += g[i]
+        Ht += h[i]
+    parent = _score(Gt, Ht, lam)
+    res_gain = np.zeros(p)
+    res = np.full((p, 5), -1, dtype=np.int64)
+    for f1 in prange(p):
+        n1 = nb[f1]
+        col1 = XT[f1]
+        bl = np.zeros(n1)
+        fl = np.full(n1, -1, dtype=np.int64)
+        tl = np.full(n1, -1, dtype=np.int64)
+        br = np.zeros(n1)
+        fr = np.full(n1, -1, dtype=np.int64)
+        tr = np.full(n1, -1, dtype=np.int64)
+        root = np.zeros(n1)
+        valid = np.zeros(n1, dtype=np.bool_)
+        h2 = np.zeros((n1, B, 3))
+        total = np.zeros((B, 3))
+        left = np.zeros((B, 3))
+        right = np.zeros((B, 3))
+        for f2 in range(p):
+            m2 = nb[f2]
+            col2 = XT[f2]
+            h2[:] = 0.0
+            for i in range(n):
+                a = col1[i]
+                b = col2[i]
+                h2[a, b, 0] += g[i]
+                h2[a, b, 1] += h[i]
+                h2[a, b, 2] += w[i]
+            total[:] = 0.0
+            for b1 in range(n1):
+                for b2 in range(B):
+                    for c in range(3):
+                        total[b2, c] += h2[b1, b2, c]
+            left[:] = 0.0
+            for t1 in range(n1 - 1):
+                for b2 in range(B):
+                    for c in range(3):
+                        left[b2, c] += h2[t1, b2, c]
+                if f2 == 0:
+                    # estatísticas do corte da raiz, como na referência (via f2 = 0)
+                    GL = 0.0
+                    HL = 0.0
+                    WL = 0.0
+                    WR = 0.0
+                    for b2 in range(nb[0]):
+                        GL += left[b2, 0]
+                        HL += left[b2, 1]
+                        WL += left[b2, 2]
+                        WR += total[b2, 2] - left[b2, 2]
+                    if min_weight <= WL and min_weight <= WR:
+                        valid[t1] = True
+                        root[t1] = (_score(GL, HL, lam) + _score(Gt - GL, Ht - HL, lam)
+                                    - parent)
+                if not valid[t1]:
+                    continue
+                for b2 in range(B):
+                    for c in range(3):
+                        right[b2, c] = total[b2, c] - left[b2, c]
+                gl, cl = _best_cut_hist(left, m2, lam, min_weight)
+                if gl > bl[t1]:
+                    bl[t1] = gl
+                    fl[t1] = f2
+                    tl[t1] = cl
+                gr, cr = _best_cut_hist(right, m2, lam, min_weight)
+                if gr > br[t1]:
+                    br[t1] = gr
+                    fr[t1] = f2
+                    tr[t1] = cr
+        best = 0.0
+        for t1 in range(n1 - 1):
+            if not valid[t1]:
+                continue
+            gain = root[t1] + bl[t1] + br[t1]
+            if gain > best:
+                best = gain
+                res[f1, 0] = t1
+                res[f1, 1] = fl[t1]
+                res[f1, 2] = tl[t1]
+                res[f1, 3] = fr[t1]
+                res[f1, 4] = tr[t1]
+        res_gain[f1] = best
+    return res_gain, res
+
+
+# ---------------------------------------------------------------- lasso logístico (caminho)
+
+@njit(cache=True)
+def _soft(u, t):
+    if u > t:
+        return u - t
+    if u < -t:
+        return u + t
+    return 0.0
+
+
+@njit(cache=True)
+def _col_dot(indptr, indices, j, v):
+    acc = 0.0
+    for q in range(indptr[j], indptr[j + 1]):
+        acc += v[indices[q]]
+    return acc
+
+
+@njit(cache=True)
+def l1_logistic_path(indptr, indices, scale, y, lambdas, cost, max_cost, tol, max_outer,
+                     max_sweeps, beta_init, b0_init):
+    """Caminho do lasso logístico (estilo glmnet) sobre colunas binárias esparsas.
+
+    Coluna j vale ``scale[j]`` nas linhas ``indices[indptr[j]:indptr[j+1]]`` e 0
+    no resto. Objetivo em cada λ: (1/n)·Σ log-loss + λ·Σ|β_j|, intercepto sem
+    penalidade. Para cada λ (decrescente, warm start): IRLS por fora,
+    coordinate descent por dentro, só sobre o conjunto forte (strong rules de
+    Tibshirani et al. 2012: |∇_j| ≥ 2λ_k − λ_{k−1}, mais os ativos). Ao
+    convergir, confere KKT nas colunas descartadas e readmite as violadoras —
+    a solução é a do problema completo, só evita varrer colunas inúteis.
+    Para quando o custo ativo (Σ cost_j dos β_j ≠ 0) passa de ``max_cost``.
+    ``beta_init``/``b0_init``: ponto de partida (warm start de um sub-caminho);
+    ``b0_init`` NaN = começar do zero com o intercepto da taxa média.
+    Devolve (β por λ, intercepto por λ, nº de λ resolvidos).
+    """
+    m = len(indptr) - 1
+    n = len(y)
+    K = len(lambdas)
+    betas = np.zeros((K, m))
+    b0s = np.zeros(K)
+    beta = np.zeros(m)
+    ybar = 0.0
+    for i in range(n):
+        ybar += y[i]
+    ybar /= n
+    ybar = min(max(ybar, 1e-6), 1 - 1e-6)
+    b0 = np.log(ybar / (1 - ybar))
+    active = np.zeros(m, dtype=np.bool_)
+    if not np.isnan(b0_init):
+        b0 = b0_init
+        for j in range(m):
+            beta[j] = beta_init[j]
+            active[j] = beta[j] != 0.0
+    eta = np.full(n, b0)
+    for j in range(m):
+        if beta[j] != 0.0:
+            for q in range(indptr[j], indptr[j + 1]):
+                eta[indices[q]] += scale[j] * beta[j]
+    r = np.empty(n)
+    wt = np.empty(n)
+    xw2 = np.zeros(m)
+    strong = np.zeros(m, dtype=np.bool_)
+    done = 0
+    thr_prev = n * lambdas[0]
+    for k in range(K):
+        thr = n * lambdas[k]
+        for outer in range(max_outer):
+            wsum = 0.0
+            for i in range(n):
+                e = eta[i]
+                pr = 1.0 / (1.0 + np.exp(-e)) if e >= 0 else np.exp(e) / (1.0 + np.exp(e))
+                wi = max(pr * (1 - pr), 1e-5)
+                wt[i] = wi
+                r[i] = y[i] - pr  # = w·(z − η) com z a resposta de trabalho
+                wsum += wi
+            if outer == 0:
+                cut = 2 * thr - thr_prev
+                for j in range(m):
+                    strong[j] = active[j] or (
+                        abs(scale[j] * _col_dot(indptr, indices, j, r)) >= cut)
+            for j in range(m):
+                if strong[j]:
+                    xw2[j] = _col_dot(indptr, indices, j, wt) * scale[j] * scale[j]
+            max_eta_change = 0.0
+            while True:
+                sweeps = 0
+                only_active = False
+                while sweeps < max_sweeps:
+                    sweeps += 1
+                    max_delta = 0.0
+                    entered = False
+                    for j in range(m):
+                        if not strong[j] or (only_active and not active[j]) or xw2[j] <= 0:
+                            continue
+                        u = scale[j] * _col_dot(indptr, indices, j, r) + xw2[j] * beta[j]
+                        new = _soft(u, thr) / xw2[j]
+                        d = new - beta[j]
+                        if d != 0.0:
+                            if beta[j] == 0.0:
+                                entered = True
+                            beta[j] = new
+                            active[j] = new != 0.0
+                            step = scale[j] * d
+                            for q in range(indptr[j], indptr[j + 1]):
+                                i = indices[q]
+                                r[i] -= wt[i] * step
+                                eta[i] += step
+                            if abs(step) > max_eta_change:
+                                max_eta_change = abs(step)
+                            change = d * d * xw2[j]
+                            if change > max_delta:
+                                max_delta = change
+                    s = 0.0
+                    for i in range(n):
+                        s += r[i]
+                    d0 = s / wsum
+                    b0 += d0
+                    for i in range(n):
+                        r[i] -= wt[i] * d0
+                        eta[i] += d0
+                    if max_delta < tol:
+                        if not only_active and not entered:
+                            break
+                        only_active = False  # ativos convergiram: varre o conjunto forte
+                    else:
+                        only_active = True
+                # KKT nas colunas fora do conjunto forte
+                violated = False
+                for j in range(m):
+                    if not strong[j] and abs(scale[j] * _col_dot(indptr, indices, j, r)) > thr:
+                        strong[j] = True
+                        xw2[j] = _col_dot(indptr, indices, j, wt) * scale[j] * scale[j]
+                        violated = True
+                if not violated:
+                    break
+            if max_eta_change < 1e-6:
+                break
+        thr_prev = thr
+        betas[k] = beta
+        b0s[k] = b0
+        done = k + 1
+        c = 0.0
+        for j in range(m):
+            if beta[j] != 0.0:
+                c += cost[j]
+        if c > max_cost:
+            break
+    return betas, b0s, done

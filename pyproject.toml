@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "arvore-rapida"
+version = "0.1.0"
+description = "Árvores de decisão rápidas e somas interpretáveis de árvores ótimas para classificação binária"
+readme = "arvore_rapida/README_PACOTE.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "rafapras" }]
+dependencies = [
+    "numpy>=1.26",
+    "numba>=0.60",
+    "scikit-learn>=1.6",  # validate_data e tags de estimador
+]
+
+[project.optional-dependencies]
+# triagem de features por importância de ganho quando p > 128 (sem ela, triagem FAST)
+lightgbm = ["lightgbm>=4.0"]
+bench = ["lightgbm>=4.0", "psutil", "threadpoolctl", "optuna>=3.0", "pandas", "scipy"]
+test = ["pytest>=8", "scipy", "pandas", "matplotlib"]
+plot = ["matplotlib>=3.8"]
+
+[tool.setuptools.packages.find]
+include = ["arvore_rapida*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# estilo que não briga com kernels Numba (laços explícitos, min/max manuais)
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = [
+    "E731",    # lambdas curtas para nomes de feature
+    "RUF001",  # texto em português (acentos, sinais)
+    "RUF002",
+    "RUF003",
+    "B905",    # zip sem strict: pares de mesmo tamanho por construção
+    "SIM108",  # ternário nem sempre é mais legível
+    "RUF046",  # int(round(x)) com escalares numpy: explícito de propósito
+]
+
+[tool.ruff.lint.per-file-ignores]
+"arvore_rapida/core.py" = ["F401", "E402"]  # fachada de compatibilidade: reexporta nomes
+"tests/*" = ["E501"]
+"arvore_rapida/benchmark.py" = ["E501", "RUF059"]  # harness de medição, não é API
+
+[tool.ruff.lint.isort]
+known-first-party = ["arvore_rapida"]

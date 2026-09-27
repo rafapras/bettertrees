@@ -1,0 +1,225 @@
+"""Destilação de um professor LightGBM numa árvore única.
+
+- ``crossfit_teacher``: probabilidade OOF (cada linha prevista por um
+  professor que não a viu), com early stopping interno por fold;
+- ``soft_label_expand``: cada linha vira duas (y=1 com peso w·p, y=0 com peso
+  w·(1−p)); o Gini ponderado do motor otimiza então contra o alvo suave, sem
+  mudar o motor. ``min_samples_leaf`` passa a contar linhas expandidas;
+- ``restate_leaf_masses``: reestima as massas de todos os nós com o y real
+  (a estrutura vem do professor, a palavra final é do dado);
+- ``MixedDepthTree``: topo de profundidade ``top_depth`` num alvo e fundo no
+  outro — o 2×2 de H1 (estrutura) × H2 (refino).
+"""
+
+import numpy as np
+from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.model_selection import StratifiedKFold
+from sklearn.utils.validation import check_is_fitted
+
+from ..estimator import FastDecisionTreeClassifier
+from ..postprocess import hierarchical_shrinkage_probabilities
+from ._common import as_float_matrix, as_target, as_weights
+
+TEACHER_DEFAULTS = dict(n_estimators=2000, learning_rate=0.05, num_leaves=31,
+                        min_child_samples=20, subsample=0.8, subsample_freq=1,
+                        colsample_bytree=0.8, verbose=-1, deterministic=True,
+                        force_row_wise=True, n_jobs=1)
+
+
+def crossfit_teacher(X, y, *, n_splits=5, random_state=0, params=None,
+                     early_stopping_fraction=0.15, return_models=False,
+                     folds=None):
+    """Probabilidade OOF da classe positiva (maior rótulo) por LightGBM.
+
+    Dentro de cada fold de treino, ``early_stopping_fraction`` vira validação
+    do early stopping. ``folds`` (n,) fixa a partição (ex.: a mesma entre
+    braços de um experimento); ``None`` usa StratifiedKFold. Devolve dict com
+    ``p`` (n,), ``fold`` (n,), ``best_iterations`` e, se pedido, ``models``.
+    """
+    import lightgbm as lgb
+
+    X = as_float_matrix(X)
+    classes, yy = np.unique(np.asarray(y), return_inverse=True)
+    if len(classes) != 2:
+        raise ValueError("crossfit_teacher é binário.")
+    cfg = dict(TEACHER_DEFAULTS, random_state=random_state, **(params or {}))
+    p = np.full(len(X), np.nan)
+    fold = np.full(len(X), -1, dtype=np.int64)
+    best, models = [], []
+    rng = np.random.default_rng(random_state)
+    if folds is None:
+        skf = StratifiedKFold(n_splits, shuffle=True, random_state=random_state)
+        splits = list(skf.split(X, yy))
+    else:
+        folds = np.asarray(folds)
+        splits = [(np.flatnonzero(folds != k), np.flatnonzero(folds == k))
+                  for k in np.unique(folds)]
+    for k, (tr, te) in enumerate(splits):
+        tr = rng.permutation(tr)
+        n_val = int(round(early_stopping_fraction * len(tr)))
+        fit_idx, val_idx = tr[n_val:], tr[:n_val]
+        model = lgb.LGBMClassifier(**cfg)
+        model.fit(X[fit_idx], yy[fit_idx], eval_X=X[val_idx], eval_y=yy[val_idx],
+                  callbacks=[lgb.early_stopping(50, verbose=False)])
+        p[te] = model.predict_proba(X[te])[:, 1]
+        fold[te] = k
+        best.append(int(model.best_iteration_ or cfg["n_estimators"]))
+        if return_models:
+            models.append(model)
+    out = dict(p=p, fold=fold, best_iterations=best, classes=classes)
+    if return_models:
+        out["models"] = models
+    return out
+
+
+def soft_label_expand(X, p, sample_weight=None):
+    """(X2, y2, w2): X duplicado, y2 = [1…, 0…], w2 = [w·p, w·(1−p)].
+
+    Linhas com peso zero são descartadas pelo motor; com p ∈ {0, 1} o
+    resultado é exatamente o dado original.
+    """
+    X = as_float_matrix(X)
+    n = len(X)
+    p = as_target(p, n)
+    w = as_weights(sample_weight, n)
+    X2 = np.vstack([X, X])
+    y2 = np.concatenate([np.ones(n, dtype=np.int64), np.zeros(n, dtype=np.int64)])
+    w2 = np.concatenate([w * p, w * (1 - p)])
+    return X2, y2, w2
+
+
+def restate_leaf_masses(model, X, y, sample_weight=None):
+    """Reescreva ``class_weight``/``n_samples`` de todos os nós com (X, y) reais.
+
+    ``y`` em índices de ``model.classes_``-compatíveis (mesmos rótulos).
+    Recalcula ``leaf_probabilities_`` se o modelo usa shrinkage hierárquico.
+    Nós sem nenhuma linha herdam a massa do pai (não aparecem na previsão
+    com os mesmos dados, mas mantêm a árvore válida).
+    """
+    check_is_fitted(model, "nodes_")
+    nodes = model.nodes_
+    X = as_float_matrix(X)
+    w = as_weights(sample_weight, len(X))
+    cls = np.searchsorted(model.classes_, np.asarray(y))
+    if (cls >= len(model.classes_)).any() or (model.classes_[cls] != np.asarray(y)).any():
+        raise ValueError("y contém classes fora de model.classes_.")
+    leaves = model.apply(X)
+    cw = np.zeros_like(nodes.class_weight)
+    ns = np.zeros_like(nodes.n_samples)
+    np.add.at(cw, (leaves, cls), w)
+    np.add.at(ns, leaves, 1)
+    order = []  # pós-ordem iterativa
+    stack = [0]
+    while stack:
+        node = stack.pop()
+        order.append(node)
+        if nodes.left[node] != -1:
+            stack.extend((nodes.left[node], nodes.right[node]))
+    for node in reversed(order):
+        if nodes.left[node] != -1:
+            cw[node] = cw[nodes.left[node]] + cw[nodes.right[node]]
+            ns[node] = ns[nodes.left[node]] + ns[nodes.right[node]]
+    for node in order:  # pais antes dos filhos
+        if cw[node].sum() <= 0:
+            parent = np.flatnonzero((nodes.left == node) | (nodes.right == node))
+            cw[node] = cw[parent[0]] if len(parent) else nodes.class_weight[node]
+    model.nodes_ = nodes._replace(class_weight=cw, n_samples=ns)
+    if getattr(model, "leaf_shrinkage", 0) > 0:
+        model.leaf_probabilities_ = hierarchical_shrinkage_probabilities(
+            model.nodes_, float(model.leaf_shrinkage))
+    return model
+
+
+def fit_tree_on_target(X, y, p, target, *, leaf_target="y", sample_weight=None,
+                       classes=None, **tree_params):
+    """Árvore no alvo ``'y'`` (rótulo) ou ``'p'`` (suave); folhas em ``leaf_target``.
+
+    ``classes``: os dois rótulos globais (necessário quando o subconjunto de y
+    tem uma classe só e o alvo é suave).
+    """
+    X = as_float_matrix(X)
+    if target == "y":
+        model = FastDecisionTreeClassifier(**tree_params).fit(X, y, sample_weight)
+        return model
+    if target != "p":
+        raise ValueError("target deve ser 'y' ou 'p'.")
+    classes = np.unique(np.asarray(y)) if classes is None else np.asarray(classes)
+    if len(classes) != 2:
+        raise ValueError("alvo suave exige y binário.")
+    X2, y2, w2 = soft_label_expand(X, p, sample_weight)
+    model = FastDecisionTreeClassifier(**tree_params).fit(X2, classes[y2], w2)
+    if leaf_target == "y":
+        restate_leaf_masses(model, X, y, sample_weight)
+    elif leaf_target != "p":
+        raise ValueError("leaf_target deve ser 'y' ou 'p'.")
+    return model
+
+
+class MixedDepthTree(ClassifierMixin, BaseEstimator):
+    """Topo (``top_depth`` níveis) num alvo, fundo no outro; binário.
+
+    ``fit(X, y, p)``: ``p`` é a probabilidade OOF do professor. As folhas
+    finais são estimadas em ``leaf_target``. Cada subárvore do fundo é uma
+    ``FastDecisionTreeClassifier`` de profundidade ``depth − top_depth`` sobre
+    as linhas da folha do topo (bins reaprendidos nessas linhas).
+    """
+
+    def __init__(self, *, depth=6, top_depth=3, top_target="p",
+                 bottom_target="y", leaf_target="y", tree_params=None):
+        self.depth = depth
+        self.top_depth = top_depth
+        self.top_target = top_target
+        self.bottom_target = bottom_target
+        self.leaf_target = leaf_target
+        self.tree_params = tree_params
+
+    def fit(self, X, y, p, sample_weight=None):
+        X = as_float_matrix(X)
+        y = np.asarray(y)
+        w = as_weights(sample_weight, len(X))
+        p = as_target(p, len(X))
+        if not 0 < self.top_depth <= self.depth:
+            raise ValueError("0 < top_depth <= depth.")
+        params = dict(self.tree_params or {})
+        self.classes_ = np.unique(y)
+        if len(self.classes_) != 2:
+            raise ValueError("MixedDepthTree é binária.")
+        self.top_ = fit_tree_on_target(X, y, p, self.top_target,
+                                       leaf_target=self.leaf_target, sample_weight=w,
+                                       classes=self.classes_,
+                                       max_depth=self.top_depth, **params)
+        self.bottom_ = {}
+        rest = self.depth - self.top_depth
+        if rest > 0:
+            leaves = self.top_.apply(X)
+            for leaf in np.unique(leaves):
+                rows = leaves == leaf
+                if len(np.unique(y[rows])) < 2 and self.bottom_target == "y":
+                    continue  # folha pura: nada a cortar
+                sub = fit_tree_on_target(X[rows], y[rows], p[rows], self.bottom_target,
+                                         leaf_target=self.leaf_target,
+                                         sample_weight=w[rows], classes=self.classes_,
+                                         max_depth=rest, **params)
+                if list(sub.classes_) != list(self.classes_):
+                    continue
+                self.bottom_[int(leaf)] = sub
+        self.n_features_in_ = X.shape[1]
+        return self
+
+    def predict_proba(self, X):
+        check_is_fitted(self, "top_")
+        X = as_float_matrix(X)
+        out = self.top_.predict_proba(X)
+        leaves = self.top_.apply(X)
+        for leaf, sub in self.bottom_.items():
+            rows = leaves == leaf
+            if rows.any():
+                out[rows] = sub.predict_proba(X[rows])
+        return out
+
+    def predict(self, X):
+        return self.classes_[self.predict_proba(X).argmax(axis=1)]
+
+    def get_n_leaves(self):
+        top = self.top_.get_n_leaves()
+        return top - len(self.bottom_) + sum(s.get_n_leaves() for s in self.bottom_.values())

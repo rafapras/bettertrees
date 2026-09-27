@@ -1,0 +1,119 @@
+"""Vocabulário compartilhado de combinações (razões/diferenças) com teste de forma.
+
+Nenhum nó estima pesos: as combinações entram antes da árvore como colunas
+novas, escolhidas por um teste de forma por par. Para o par (i, j):
+
+- ``gain_axis``: melhor corte único em x_i ou em x_j (2 folhas);
+- ``gain_quad``: melhor quadrante em (x_i, x_j) (4 células, interação "E");
+- ``gain_comb``: melhor corte único em log(x_i/x_j) ou x_i − x_j (2 folhas).
+
+``shape = gain_comb − max(gain_axis, gain_quad)`` > 0 quer dizer que a
+fronteira diagonal explica mais que um eixo e mais que o "E" com 4 células:
+o par tem forma de razão. Escolha o vocabulário num fold separado do que
+avalia a árvore (viés de seleção).
+"""
+
+import numpy as np
+
+from ._common import as_float_matrix, as_target, as_weights, base_margin, binned, grad_hess
+from ._kernels import best_cut_1d, combination_scores, hist_1d, quadrant_scores
+from .interactions import all_pairs
+
+_KINDS = {"ratio": 0, "diff": 1}
+
+
+def top_pairs(matrix, k):
+    """Os k pares (i < j) de maior valor numa matriz simétrica (ex.: coocorrência)."""
+    iu, ju = np.triu_indices(matrix.shape[0], 1)
+    order = np.argsort(-matrix[iu, ju], kind="stable")[:k]
+    return np.stack([iu[order], ju[order]], axis=1).astype(np.int64)
+
+
+def pair_shape_scores(X, y, margin=None, sample_weight=None, *, pairs=None,
+                      kind="ratio", max_bins=32, lam=1.0, min_weight=20.0):
+    """Teste de forma por par; dict de arrays alinhados a ``pairs``."""
+    if kind not in _KINDS:
+        raise ValueError("kind deve ser 'ratio' ou 'diff'.")
+    X = as_float_matrix(X)
+    n, p = X.shape
+    y = as_target(y, n)
+    w = as_weights(sample_weight, n)
+    m = np.full(n, base_margin(y, w)) if margin is None else np.asarray(margin, float)
+    pairs = all_pairs(p) if pairs is None else np.ascontiguousarray(pairs, dtype=np.int64)
+    Xb, _, nb = binned(X, max_bins)
+    g, h = grad_hess(y, m, w)
+    axis, _ = best_cut_1d(hist_1d(Xb, g, h, w, int(nb.max())), nb, lam, min_weight)
+    quad, _, _ = quadrant_scores(Xb, g, h, w, nb, pairs, lam, min_weight)
+    comb, thr, valid = combination_scores(X, g, h, w, pairs, _KINDS[kind],
+                                          max_bins, lam, min_weight)
+    gain_axis = np.maximum(axis[pairs[:, 0]], axis[pairs[:, 1]])
+    return dict(pairs=pairs, gain_axis=gain_axis, gain_quad=quad, gain_comb=comb,
+                threshold=thr, valid_frac=valid,
+                shape=comb - np.maximum(gain_axis, quad))
+
+
+class RatioVocabulary:
+    """Seleciona até ``max_terms`` combinações com forma de razão e as anexa a X.
+
+    Parameters
+    ----------
+    kind : {'ratio', 'diff'}
+        Razão x_i/x_j (ambas > 0) ou diferença x_i − x_j (mesma unidade).
+    candidates : 'all' ou array (k, 2)
+        Pares candidatos; use ``top_pairs(teacher_path_pairs(...), k)`` para
+        o braço "pares do professor".
+    min_valid : float
+        Fração mínima de linhas elegíveis (razão: ambas positivas e finitas).
+    min_shape : float
+        Folga mínima de ``shape``; 0 = basta a diagonal ganhar.
+    """
+
+    def __init__(self, *, max_terms=10, kind="ratio", candidates="all",
+                 min_valid=0.9, min_shape=0.0, max_bins=32, lam=1.0,
+                 min_weight=20.0):
+        self.max_terms = max_terms
+        self.kind = kind
+        self.candidates = candidates
+        self.min_valid = min_valid
+        self.min_shape = min_shape
+        self.max_bins = max_bins
+        self.lam = lam
+        self.min_weight = min_weight
+
+    def fit(self, X, y, margin=None, sample_weight=None, feature_names=None):
+        X = as_float_matrix(X)
+        pairs = None if isinstance(self.candidates, str) else self.candidates
+        s = pair_shape_scores(X, y, margin, sample_weight, pairs=pairs,
+                              kind=self.kind, max_bins=self.max_bins,
+                              lam=self.lam, min_weight=self.min_weight)
+        keep = (s["valid_frac"] >= self.min_valid) & (s["shape"] > self.min_shape)
+        idx = np.flatnonzero(keep)
+        idx = idx[np.argsort(-s["shape"][idx], kind="stable")][:self.max_terms]
+        self.scores_ = s
+        self.pairs_ = s["pairs"][idx]
+        names = (list(feature_names) if feature_names is not None
+                 else [f"x{j}" for j in range(X.shape[1])])
+        op = "/" if self.kind == "ratio" else "-"
+        self.term_names_ = [f"{names[i]}{op}{names[j]}" for i, j in self.pairs_]
+        self.n_features_in_ = X.shape[1]
+        return self
+
+    def terms(self, X):
+        """Só as colunas novas (n, n_terms); NaN onde a linha é inelegível."""
+        X = as_float_matrix(X)
+        a = X[:, self.pairs_[:, 0]]
+        b = X[:, self.pairs_[:, 1]]
+        if self.kind == "diff":
+            return a - b
+        with np.errstate(divide="ignore", invalid="ignore"):
+            out = a / b
+        out[~((a > 0) & (b > 0))] = np.nan
+        return out
+
+    def transform(self, X):
+        """X original seguido das colunas do vocabulário."""
+        X = as_float_matrix(X)
+        return np.hstack([X, self.terms(X)])
+
+    def fit_transform(self, X, y, margin=None, sample_weight=None, feature_names=None):
+        return self.fit(X, y, margin, sample_weight, feature_names).transform(X)
