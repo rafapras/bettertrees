@@ -80,8 +80,8 @@ def test_rules_merge_path_into_intervals_and_flag_missing():
     for _, conds, _ in m.rules():
         feats = [next(n for n in X.columns if n in c) for c in conds]
         assert len(feats) == len(set(feats))
-    # só renda tinha NaN no treino: só ela pode aparecer como "ou ausente"
-    assert all("renda" in c for c in text if "ausente" in c)
+    # only renda had NaN in training: only it may show up as "or missing"
+    assert all("renda" in c for c in text if "missing" in c)
     assert not m.nan_features_[0] and m.nan_features_[1]
 
 
@@ -108,3 +108,20 @@ def test_predict_rejects_wrong_width_and_unfitted():
     m = FIGSClassifier(max_splits=4).fit(X, y)
     with pytest.raises(ValueError):
         m.predict(X.iloc[:, :3])
+
+
+@pytest.mark.parametrize("make", [
+    lambda: SumOfOptimalTrees(n_trees=3, depth=2, extra_stumps=1),
+    lambda: FIGSClassifier(max_splits=8),
+    lambda: AdditiveTreeBooster(),
+])
+def test_shap_tree_explainer_reproduces_logit(make):
+    shap = pytest.importorskip("shap")
+    X, y = _data()
+    X = X.to_numpy()
+    m = make().fit(X, y)
+    ex = shap.TreeExplainer(m.to_shap_model(), data=X[:100],
+                            feature_perturbation="interventional")
+    sv = ex.shap_values(X[:200])
+    np.testing.assert_allclose(ex.expected_value + sv.sum(axis=1),
+                               m.decision_function(X[:200]), atol=1e-5)

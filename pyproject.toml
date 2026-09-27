@@ -21,7 +21,7 @@ dependencies = [
 # triagem de features por importância de ganho quando p > 128 (sem ela, triagem FAST)
 lightgbm = ["lightgbm>=4.0"]
 bench = ["lightgbm>=4.0", "psutil", "threadpoolctl", "optuna>=3.0", "pandas", "scipy"]
-test = ["pytest>=8", "scipy", "pandas", "matplotlib"]
+test = ["pytest>=8", "scipy", "pandas", "matplotlib", "shap"]
 plot = ["matplotlib>=3.8"]
 
 [tool.setuptools.packages.find]

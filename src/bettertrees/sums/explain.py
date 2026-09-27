@@ -1,21 +1,21 @@
-"""Forma interpretável das somas de árvores em logit.
+"""Interpretable form of logit sums of trees.
 
-Toda soma (``SumOfOptimalTrees``, ``FIGSClassifier``, ``BoostedOptimalTrees``,
-``AdditiveTreeBooster``) é ``logit(p) = base + Σ_k árvore_k(x)``, e cada
-árvore é uma lista de folhas "condições → valor". O mixin daqui dá a todas a
-mesma saída:
+Every sum (``SumOfOptimalTrees``, ``FIGSClassifier``, ``BoostedOptimalTrees``,
+``AdditiveTreeBooster``) is ``logit(p) = base + Σ_k tree_k(x)``, and each tree
+is a list of leaves "conditions → value". The mixin here gives all of them the
+same output:
 
-- ``rules()``: (árvore, condições, valor no logit) por folha, com as condições
-  de um caminho fundidas em intervalos por feature (``3 < x <= 7``);
-- ``predict_contributions(X)``: contribuição de cada árvore por linha; somada à
-  base, reproduz ``decision_function`` exatamente;
-- ``explain()``: scorecard em texto; ``to_dict()``: o mesmo em JSON;
-- ``get_trees()``: cada árvore em arrays (como ``tree_`` do sklearn), com os
-  cortes em valores reais; ``export_text()``: as árvores desenhadas em texto.
+- ``rules()``: (tree, conditions, logit value) per leaf, with the conditions of
+  a path merged into per-feature intervals (``3 < x <= 7``);
+- ``predict_contributions(X)``: each tree's contribution per row; added to the
+  base, it reproduces ``decision_function`` exactly;
+- ``explain()``: a text scorecard; ``to_dict()``: the same as JSON;
+- ``get_trees()``: each tree as arrays (like sklearn's ``tree_``), with cuts in
+  real values; ``export_text()``: the trees drawn as text.
 
-Convenção dos cortes (bins): ``x <= v`` inclui NaN (NaN vai sempre à
-esquerda); ``x > v`` exclui. Um corte no bin 0 separa só "ausente × presente".
-A anotação "ou ausente" aparece só nas features que tinham NaN no treino.
+Cut convention (bins): ``x <= v`` includes NaN (NaN always goes left);
+``x > v`` excludes it. A cut at bin 0 only separates "missing" from "present".
+The "or missing" note appears only for features that had NaN in training.
 """
 
 import numpy as np
@@ -25,7 +25,7 @@ from ._common import bin_threshold, predict_input, rebin
 
 
 def feature_names_of(X):
-    """Nomes das colunas (DataFrame com nomes em texto) ou None."""
+    """Column names (DataFrame with string column names) or None."""
     cols = getattr(X, "columns", None)
     if cols is None:
         return None
@@ -38,12 +38,12 @@ def _fmt(v, precision):
 
 
 def leaf_rules(tree, edges, names=None, nan_features=None, precision=6):
-    """Folhas de ``tree`` como (condições em intervalos, valor)."""
+    """Leaves of ``tree`` as (interval conditions, value)."""
     name = (lambda j: str(names[j])) if names is not None else (lambda j: f"x{j}")
     out = []
 
     def conditions(path):
-        bounds = {}  # feature -> [maior bin à direita (lo), menor bin à esquerda (hi)]
+        bounds = {}  # feature -> [largest bin to the right (lo), smallest bin to the left (hi)]
         for f, t, went_left in path:
             lo, hi = bounds.setdefault(f, [None, None])
             if went_left:
@@ -55,14 +55,14 @@ def leaf_rules(tree, edges, names=None, nan_features=None, precision=6):
             lo, hi = bounds[f]
             nm = name(f)
             nan_ok = nan_features is not None and bool(nan_features[f])
-            if lo is None:  # só cortes à esquerda: NaN incluído
+            if lo is None:  # only left turns: NaN included
                 if hi == 0:
-                    conds.append(f"{nm} ausente")
+                    conds.append(f"{nm} is missing")
                     continue
                 txt = f"{nm} <= {_fmt(bin_threshold(edges[f], hi), precision)}"
-                conds.append(f"({txt} ou ausente)" if nan_ok else txt)
+                conds.append(f"({txt} or missing)" if nan_ok else txt)
             elif hi is None:
-                conds.append(f"{nm} presente" if lo == 0 else
+                conds.append(f"{nm} is present" if lo == 0 else
                              f"{nm} > {_fmt(bin_threshold(edges[f], lo), precision)}")
             else:
                 low = "" if lo == 0 else f"{_fmt(bin_threshold(edges[f], lo), precision)} < "
@@ -82,51 +82,51 @@ def leaf_rules(tree, edges, names=None, nan_features=None, precision=6):
 
 
 class InterpretableSumMixin:
-    """Saída interpretável comum; a classe define ``_explain_trees()``."""
+    """Shared interpretable output; the class defines ``_explain_trees()``."""
 
     def __sklearn_tags__(self):
         tags = super().__sklearn_tags__()
-        tags.classifier_tags.multi_class = False  # binário (v1)
-        tags.input_tags.allow_nan = True  # NaN tem bin próprio e vai sempre à esquerda
+        tags.classifier_tags.multi_class = False  # binary only (v1)
+        tags.input_tags.allow_nan = True  # NaN has its own bin and always goes left
         return tags
 
     def _explain_trees(self):
         return self.trees_
 
-    # ------------------------------------------------------------ previsão
+    # ------------------------------------------------------------ prediction
 
     def predict_proba(self, X):
-        """Probabilidades das duas classes.
+        """Probabilities of both classes.
 
         Returns
         -------
-        ndarray, shape (n, 2)
-            Colunas na ordem de ``classes_``; ``[:, 1] = sigmoid(decision_function(X))``.
+        ndarray of shape (n_samples, 2)
+            Columns follow ``classes_``; ``[:, 1] = sigmoid(decision_function(X))``.
         """
         p = 0.5 * (1.0 + np.tanh(0.5 * self.decision_function(X)))
         return np.column_stack([1 - p, p])
 
     def predict(self, X):
-        """Classe mais provável (``classes_[1]`` quando o logit é positivo)."""
-        margin = self.decision_function(X)  # valida o ajuste antes de ler classes_
+        """Most likely class (``classes_[1]`` when the logit is positive)."""
+        margin = self.decision_function(X)  # checks the fit before reading classes_
         return self.classes_[(margin > 0).astype(int)]
 
     @property
     def n_splits_(self):
-        """Total de cortes (nós internos) somado entre as árvores."""
+        """Total number of cuts (internal nodes) over all trees."""
         return sum(t.n_splits for t in self._explain_trees())
 
-    # ------------------------------------------------------------ árvores
+    # ------------------------------------------------------------ trees
 
     def get_trees(self, feature_names=None):
-        """As árvores da soma em arrays, no formato do ``tree_`` do sklearn.
+        """The trees of the sum as arrays, in the format of sklearn's ``tree_``.
 
-        Cada árvore é um dict com arrays por nó: ``feature`` (-1 nas folhas),
-        ``feature_name``, ``threshold`` (valor real: ``x <= threshold`` vai à
-        esquerda, NaN sempre à esquerda; ``-inf`` separa "ausente" de
-        "presente"), ``children_left``/``children_right`` (-1 nas folhas) e
-        ``value`` (contribuição no logit; só as folhas entram na soma).
-        ``logit(p) = base_margin_ + Σ_k value_k[folha de x na árvore k]``.
+        Each tree is a dict of per-node arrays: ``feature`` (-1 at leaves),
+        ``feature_name``, ``threshold`` (real value: ``x <= threshold`` goes
+        left, NaN always goes left; ``-inf`` separates "missing" from
+        "present"), ``children_left``/``children_right`` (-1 at leaves) and
+        ``value`` (logit contribution; only leaves enter the sum).
+        ``logit(p) = base_margin_ + Σ_k value_k[leaf of x in tree k]``.
         """
         check_is_fitted(self, "base_margin_")
         names = self._names(feature_names)
@@ -145,20 +145,42 @@ class InterpretableSumMixin:
                 value=np.asarray(tree.value, dtype=np.float64).copy()))
         return out
 
+    def to_shap_model(self):
+        """The sum in SHAP's custom tree format, for exact TreeSHAP.
+
+        ``shap.TreeExplainer(model.to_shap_model(), data=background,
+        feature_perturbation="interventional")``; ``expected_value`` plus the row
+        sum of the SHAP values reproduces ``decision_function`` (logit scale).
+        Main-effect trees get the same attribution as ``predict_contributions``
+        minus its background mean; SHAP only adds information for interaction
+        trees. Node covers are not stored, so use the interventional mode.
+        """
+        trees = []
+        for t in self.get_trees():
+            leaf = t["children_left"] == -1
+            trees.append(dict(
+                children_left=t["children_left"], children_right=t["children_right"],
+                children_default=t["children_left"].copy(),  # NaN always goes left
+                features=np.where(leaf, -2, t["feature"]),
+                thresholds=np.where(leaf, 0.0, t["threshold"]),
+                values=np.where(leaf, t["value"], 0.0).reshape(-1, 1),
+                node_sample_weight=np.ones(len(leaf))))
+        return dict(trees=trees, base_offset=float(self.base_margin_))
+
     def export_text(self, feature_names=None, precision=4):
-        """As árvores desenhadas em texto (no estilo de ``sklearn.tree.export_text``)."""
+        """The trees drawn as text (in the style of ``sklearn.tree.export_text``)."""
         lines = [f"base (logit): {float(self.base_margin_):+.{precision}f}"]
         for k, t in enumerate(self.get_trees(feature_names), 1):
-            lines.append(f"árvore {k}")
+            lines.append(f"tree {k}")
 
             def walk(node, depth, t=t):
                 pad = "|   " * depth
                 if t["children_left"][node] == -1:
-                    lines.append(f"{pad}|--- valor: {t['value'][node]:+.{precision}f}")
+                    lines.append(f"{pad}|--- value: {t['value'][node]:+.{precision}f}")
                     return
                 name, thr = t["feature_name"][node], t["threshold"][node]
                 if np.isneginf(thr):
-                    left, right = f"{name} ausente", f"{name} presente"
+                    left, right = f"{name} is missing", f"{name} is present"
                 else:
                     v = f"{thr:.{precision}g}"
                     left, right = f"{name} <= {v}", f"{name} >  {v}"
@@ -177,15 +199,15 @@ class InterpretableSumMixin:
         return None if names is None else list(names)
 
     def rules(self, feature_names=None, precision=6):
-        """[(árvore, condições, valor no logit)] de todas as folhas."""
+        """[(tree, conditions, logit value)] for every leaf."""
         check_is_fitted(self, "base_margin_")
         names, nan = self._names(feature_names), getattr(self, "nan_features_", None)
         return [(k, conds, v) for k, tree in enumerate(self._explain_trees())
                 for conds, v in leaf_rules(tree, self.bin_edges_, names, nan, precision)]
 
     def predict_contributions(self, X):
-        """Matriz (n, n_árvores) de contribuições no logit; base + soma das
-        colunas = ``decision_function(X)``."""
+        """(n_samples, n_trees) matrix of logit contributions; base + row sum
+        = ``decision_function(X)``."""
         Xb = rebin(predict_input(self, X, "base_margin_"), self.bin_edges_)
         trees = self._explain_trees()
         out = np.zeros((len(Xb), len(trees)))
@@ -194,7 +216,7 @@ class InterpretableSumMixin:
         return out
 
     def to_dict(self, feature_names=None, precision=6):
-        """Modelo inteiro em estrutura JSON (base + árvores de regras)."""
+        """The whole model as a JSON-ready structure (base + rule trees)."""
         check_is_fitted(self, "base_margin_")
         trees = {}
         for k, conds, v in self.rules(feature_names, precision):
@@ -204,27 +226,27 @@ class InterpretableSumMixin:
                     trees=[dict(rules=trees[k]) for k in sorted(trees)])
 
     def explain(self, feature_names=None, precision=4):
-        """Scorecard em texto: some a base e o valor da folha de cada árvore."""
+        """Text scorecard: add the base and the leaf value of every tree."""
         d = self.to_dict(feature_names, precision)
         n_cuts = sum(t.n_splits for t in self._explain_trees())
         lines = [f"logit P(y = {d['classes'][1]}) = base {d['base_margin']:+.{precision}f}"
-                 f" + soma de {len(d['trees'])} árvores ({n_cuts} cortes)"]
+                 f" + sum of {len(d['trees'])} trees ({n_cuts} cuts)"]
         for k, tree in enumerate(d["trees"], 1):
-            lines.append(f"árvore {k}:")
+            lines.append(f"tree {k}:")
             for r in tree["rules"]:
-                cond = " e ".join(r["conditions"]) or "sempre"
-                lines.append(f"  {r['value']:+.{precision}f}  se {cond}")
+                cond = " and ".join(r["conditions"]) or "always"
+                lines.append(f"  {r['value']:+.{precision}f}  if {cond}")
         return "\n".join(lines)
 
-    # ------------------------------------------------------------ gráficos
+    # ------------------------------------------------------------ plots
 
     def shape_functions(self):
-        """Efeitos principais: {feature: (valores por bin, contagem de árvores)}.
+        """Main effects: {feature: (values per bin, number of trees)}.
 
-        Soma, por feature, as árvores que só usam essa feature (a função de
-        forma, como num GAM/EBM). Bin 0 = ausente; bin t >= 1 cobre
-        ``(edges[t-2], edges[t-1]]``. Árvores com mais de uma feature são
-        interações e ficam de fora (ver ``interaction_trees``).
+        Sums, per feature, the trees that use only that feature (the shape
+        function, as in a GAM/EBM). Bin 0 = missing; bin t >= 1 covers
+        ``(edges[t-2], edges[t-1]]``. Trees with more than one feature are
+        interactions and are left out (see ``interaction_trees``).
         """
         check_is_fitted(self, "base_margin_")
         out = {}
@@ -241,18 +263,18 @@ class InterpretableSumMixin:
         return out
 
     def interaction_trees(self):
-        """Índices das árvores que usam mais de uma feature."""
+        """Indices of the trees that use more than one feature."""
         return [k for k, t in enumerate(self._explain_trees())
                 if len({int(f) for f, lft in zip(t.feature, t.left) if lft != -1}) > 1]
 
     def plot_shapes(self, feature_names=None, features=None, ncols=3, figsize=None):
-        """Funções de forma (efeitos principais no logit), uma por feature."""
+        """Shape functions (main effects on the logit scale), one panel per feature."""
         plt = _pyplot()
         shapes = self.shape_functions()
         names = self._names(feature_names)
         feats = sorted(shapes) if features is None else [f for f in features if f in shapes]
         if not feats:
-            raise ValueError("nenhuma árvore de uma feature só para desenhar.")
+            raise ValueError("No single-feature tree to plot.")
         nrows = -(-len(feats) // ncols)
         fig, axes = plt.subplots(nrows, min(ncols, len(feats)), squeeze=False,
                                  figsize=figsize or (4 * min(ncols, len(feats)), 3 * nrows))
@@ -264,21 +286,20 @@ class InterpretableSumMixin:
             ax.stairs(vals[1:], np.concatenate([[lo], e, [hi]]), baseline=None, linewidth=2)
             if getattr(self, "nan_features_", None) is not None and self.nan_features_[f]:
                 ax.axhline(vals[0], linestyle=":", linewidth=1)
-                ax.annotate("ausente", (hi, vals[0]), ha="right", va="bottom", fontsize=8)
+                ax.annotate("missing", (hi, vals[0]), ha="right", va="bottom", fontsize=8)
             ax.axhline(0, color="0.6", linewidth=0.8)
-            ax.set_title(f"{names[f] if names else f'x{f}'} ({count} árv.)", fontsize=10)
-            ax.set_ylabel("contribuição no logit")
+            ax.set_title(f"{names[f] if names else f'x{f}'} ({count} trees)", fontsize=10)
+            ax.set_ylabel("logit contribution")
         for ax in list(axes.flat)[len(feats):]:
             ax.set_visible(False)
         n_int = len(self.interaction_trees())
         if n_int:
-            fig.suptitle(f"efeitos principais; {n_int} árvore(s) de interação fora do gráfico",
-                         fontsize=10)
+            fig.suptitle(f"main effects; {n_int} interaction tree(s) not shown", fontsize=10)
         fig.tight_layout()
         return fig
 
     def plot_contributions(self, x, feature_names=None, max_terms=12, ax=None):
-        """Waterfall de uma previsão: base + a folha de cada árvore em que ``x`` cai."""
+        """Waterfall of one prediction: the base plus the leaf ``x`` falls in, per tree."""
         plt = _pyplot()
         x = np.asarray(x, dtype=float).reshape(1, -1)
         contrib = self.predict_contributions(x)[0]
@@ -291,13 +312,13 @@ class InterpretableSumMixin:
             leaf = int(tree.leaf_ids(Xb)[0])
             rules = leaf_rules(tree, self.bin_edges_, names, nan, precision=4)
             leaves = [k for k, lft in enumerate(tree.left) if lft == -1]
-            labels.append(" e ".join(rules[leaves.index(leaf)][0]) or "sempre")
+            labels.append(" and ".join(rules[leaves.index(leaf)][0]) or "always")
         order = np.argsort(-np.abs(contrib), kind="stable")
         keep, rest = order[:max_terms], order[max_terms:]
         steps = [("base", float(self.base_margin_))]
         steps += [(labels[k], float(contrib[k])) for k in keep]
         if len(rest):
-            steps.append((f"outras {len(rest)} árvores", float(contrib[rest].sum())))
+            steps.append((f"other {len(rest)} trees", float(contrib[rest].sum())))
         if ax is None:
             _, ax = plt.subplots(figsize=(8, 0.45 * len(steps) + 1.2))
         pos = 0.0
@@ -309,13 +330,13 @@ class InterpretableSumMixin:
         ax.invert_yaxis()
         ax.axvline(pos, color="0.3", linestyle="--", linewidth=1)
         p = 1.0 / (1.0 + np.exp(-pos))
-        ax.set_xlabel(f"logit acumulado (final {pos:+.3f}, P = {p:.3f})")
+        ax.set_xlabel(f"cumulative logit (final {pos:+.3f}, P = {p:.3f})")
         return ax
 
 
 def _pyplot():
     try:
         import matplotlib.pyplot as plt
-    except ImportError as exc:  # pragma: no cover - depende do ambiente
-        raise ImportError("os gráficos precisam do matplotlib: pip install matplotlib") from exc
+    except ImportError as exc:  # pragma: no cover - depends on the environment
+        raise ImportError("Plotting requires matplotlib: pip install matplotlib") from exc
     return plt
