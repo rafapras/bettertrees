@@ -4,10 +4,9 @@ from itertools import product
 
 import numpy as np
 import pytest
+from tree_invariants import check_conservation, check_multilevel_blocks, check_structure
 
-from arvore_rapida import FastDecisionTreeClassifier, fit_multilevel_tree
-from tree_invariants import (check_conservation, check_multilevel_blocks,
-                             check_structure)
+from bettertrees import FastDecisionTreeClassifier, fit_multilevel_tree
 
 
 def _risk(y, weight):

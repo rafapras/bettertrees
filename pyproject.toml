@@ -1,14 +1,15 @@
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "arvore-rapida"
-version = "0.1.0"
-description = "Árvores de decisão rápidas e somas interpretáveis de árvores ótimas para classificação binária"
-readme = "arvore_rapida/README_PACOTE.md"
+name = "bettertrees"
+dynamic = ["version"]
+description = "Fast decision trees and interpretable sums of optimal trees for binary classification"
+readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
 authors = [{ name = "rafapras" }]
 dependencies = [
     "numpy>=1.26",
@@ -24,10 +25,14 @@ test = ["pytest>=8", "scipy", "pandas", "matplotlib"]
 plot = ["matplotlib>=3.8"]
 
 [tool.setuptools.packages.find]
-include = ["arvore_rapida*"]
+where = ["src"]
+
+[tool.setuptools.dynamic]
+version = { attr = "bettertrees.__version__" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["tests"]
 
 [tool.ruff]
 line-length = 100
@@ -47,9 +52,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"arvore_rapida/core.py" = ["F401", "E402"]  # fachada de compatibilidade: reexporta nomes
-"tests/*" = ["E501"]
-"arvore_rapida/benchmark.py" = ["E501", "RUF059"]  # harness de medição, não é API
+"tests/_core.py" = ["F401", "E402"]  # test facade: re-exports internals
+"tests/*" = ["E501", "E741", "B018", "RUF007", "RUF015", "RUF059"]  # test style: short names, attribute-access asserts
 
 [tool.ruff.lint.isort]
-known-first-party = ["arvore_rapida"]
+known-first-party = ["bettertrees"]

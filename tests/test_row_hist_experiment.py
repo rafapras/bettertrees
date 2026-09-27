@@ -1,10 +1,10 @@
 """Correção da acumulação por linha frente ao splitter preservado."""
 
+import _core as core
 import numpy as np
 import pytest
 
-import arvore_rapida.core as core
-from arvore_rapida import FastDecisionTreeClassifier
+from bettertrees import FastDecisionTreeClassifier
 
 
 @pytest.mark.parametrize("classes", [2, 7])

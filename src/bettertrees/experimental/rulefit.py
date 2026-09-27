@@ -18,8 +18,8 @@ from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.linear_model import LogisticRegression
 from sklearn.utils.validation import check_is_fitted
 
-from ._common import as_float_matrix, bin_threshold, rebin
-from .additive import AdditiveTreeBooster
+from ..sums._common import as_float_matrix, bin_threshold, rebin
+from ..sums.additive import AdditiveTreeBooster
 
 
 def booster_rules(booster):
@@ -121,7 +121,7 @@ class RuleFitLasso(ClassifierMixin, BaseEstimator):
         geométricos até λ_max·``lambda_ratio``) e para quando o custo passa do
         maior orçamento.
         """
-        from ._kernels import l1_logistic_path
+        from ..sums._kernels import l1_logistic_path
         n, m = Z.shape
         cols = [np.flatnonzero(Z[:, j]) for j in range(m)]
         indptr = np.zeros(m + 1, dtype=np.int64)

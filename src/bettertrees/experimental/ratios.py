@@ -15,8 +15,8 @@ avalia a árvore (viés de seleção).
 
 import numpy as np
 
-from ._common import as_float_matrix, as_target, as_weights, base_margin, binned, grad_hess
-from ._kernels import best_cut_1d, combination_scores, hist_1d, quadrant_scores
+from ..sums._common import as_float_matrix, as_target, as_weights, base_margin, binned, grad_hess
+from ..sums._kernels import best_cut_1d, combination_scores, hist_1d, quadrant_scores
 from .interactions import all_pairs
 
 _KINDS = {"ratio": 0, "diff": 1}

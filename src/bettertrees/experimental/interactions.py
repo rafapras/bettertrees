@@ -4,8 +4,8 @@ from itertools import combinations
 
 import numpy as np
 
-from ._common import as_float_matrix, as_target, as_weights, base_margin, binned, grad_hess
-from ._kernels import quadrant_scores
+from ..sums._common import as_float_matrix, as_target, as_weights, base_margin, binned, grad_hess
+from ..sums._kernels import quadrant_scores
 
 
 def all_pairs(p):

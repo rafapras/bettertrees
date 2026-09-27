@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 from sklearn.utils.estimator_checks import parametrize_with_checks
 
-from arvore_rapida.capacidade import (
+from bettertrees.sums import (
     AdditiveTreeBooster,
     BoostedOptimalTrees,
     FIGSClassifier,

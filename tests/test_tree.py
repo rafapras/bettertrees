@@ -2,27 +2,38 @@
 
 from concurrent.futures import ThreadPoolExecutor
 
+import _core as core
 import numpy as np
 import pandas as pd
 import pytest
+from _core import (
+    _node_class_mass,
+    allocate_nodes,
+    build_feature_histogram,
+    build_feature_histogram_into,
+    cannot_improve,
+    fit_bin_edges,
+    gini,
+    partition_samples,
+    predict_proba_nodes,
+    prepare_training_data,
+    prune_tree_cost_complexity,
+    remaining_gain_upper_bound,
+    scan_histogram_feature,
+    transform_bins,
+    transform_bins_row_major,
+    validate_X,
+)
 from numba import get_num_threads
 from sklearn.base import clone
+from sklearn.exceptions import NotFittedError
 from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
-from sklearn.exceptions import NotFittedError
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.utils import estimator_checks
 
-from arvore_rapida import FastDecisionTreeClassifier
-from arvore_rapida import builder, core, search
-from arvore_rapida.core import (allocate_nodes, validate_X, prepare_training_data,
-    fit_bin_edges, transform_bins, transform_bins_row_major, gini, partition_samples, predict_proba_nodes,
-    build_feature_histogram, build_feature_histogram_into,
-    remaining_gain_upper_bound, cannot_improve, scan_histogram_feature,
-    prune_tree_cost_complexity,
-    _node_class_mass)
-from arvore_rapida.benchmark import benchmark_one_node, evaluate_gate
-from arvore_rapida.splitters import resolve_objective, resolve_splitter_spec
+from bettertrees import FastDecisionTreeClassifier, builder, search
+from bettertrees.splitters import resolve_objective, resolve_splitter_spec
 
 
 def test_prepare_weights_labels_and_no_mutation():
@@ -1060,25 +1071,3 @@ def test_monotonic_cst_contract_rejects_multiclass_and_bad_directions():
 def test_invalid_parameters(params):
     with pytest.raises(ValueError):
         FastDecisionTreeClassifier(**params).fit([[0], [1]], [0, 1])
-
-
-def test_gate_cannot_pass_on_speed_alone():
-    base = dict(median_fit_seconds=3, accuracy=0.90, log_loss=0.4)
-    good = dict(median_fit_seconds=2, accuracy=0.899, log_loss=0.403)
-    assert evaluate_gate(base, good)["passed"]
-    assert not evaluate_gate(base, {**good, "log_loss": 0.405})["passed"]
-    assert not evaluate_gate(base, {**good, "accuracy": 0.89})["passed"]
-
-
-def test_one_node_benchmark_separates_histogram_and_search():
-    result = benchmark_one_node(
-        np.array([[0.0, 1.0], [1.0, 0.0], [2.0, 1.0], [3.0, 0.0],
-                  [4.0, 1.0], [5.0, 0.0]]),
-        np.array([0, 0, 1, 1, 1, 0]), max_bins=8,
-        min_samples_leaf=1, repeats=2, random_state=7)
-    assert result["same_best_split"]
-    assert result["shared_histogram_seconds"] >= 0
-    for mode in ("off", "bound"):
-        assert result["search"][mode]["median_seconds"] >= 0
-        assert result["pipeline"][mode]["median_seconds"] >= 0
-        assert result["pipeline"][mode]["median_histogram_seconds"] >= 0

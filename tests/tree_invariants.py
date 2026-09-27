@@ -15,7 +15,7 @@ Grupos:
 
 import numpy as np
 
-from arvore_rapida.kernels import gini
+from bettertrees.kernels import gini
 
 
 def _active(X, y, sample_weight):

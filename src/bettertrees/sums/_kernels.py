@@ -1,6 +1,6 @@
 """Kernels Numba das peças de capacidade (Newton sobre histogramas binados).
 
-Mesma regra de ``arvore_rapida.kernels``: todo kernel que chama outro kernel
+Mesma regra de ``bettertrees.kernels``: todo kernel que chama outro kernel
 fica neste arquivo (``cache=True`` invalida por arquivo), sem fastmath.
 
 Convenções:

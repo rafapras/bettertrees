@@ -9,9 +9,9 @@ import itertools
 
 import numpy as np
 import pytest
-
-from arvore_rapida import FastDecisionTreeClassifier
 from tree_invariants import check_tree_invariants
+
+from bettertrees import FastDecisionTreeClassifier
 
 
 def _dataset(kind, seed=0, n=1200, p=6):

@@ -5,15 +5,20 @@ from itertools import product
 import numpy as np
 import pytest
 
-from arvore_rapida import FastDecisionTreeClassifier
-from arvore_rapida.capacidade import (AdditiveTreeBooster, MixedDepthTree,
-                                      RatioVocabulary, crossfit_teacher,
-                                      fast_pair_scores, fit_tree_on_target,
-                                      pair_shape_scores, restate_leaf_masses,
-                                      screen_features, soft_label_expand,
-                                      teacher_path_pairs, top_pairs)
-from arvore_rapida.capacidade._kernels import (best_cut_1d, best_depth2,
-                                               hist_1d, quadrant_scores)
+from bettertrees import FastDecisionTreeClassifier
+from bettertrees.experimental import (
+    MixedDepthTree,
+    RatioVocabulary,
+    crossfit_teacher,
+    fast_pair_scores,
+    fit_tree_on_target,
+    pair_shape_scores,
+    soft_label_expand,
+    teacher_path_pairs,
+    top_pairs,
+)
+from bettertrees.sums import AdditiveTreeBooster, screen_features
+from bettertrees.sums._kernels import best_cut_1d, best_depth2, hist_1d, quadrant_scores
 
 
 def _sig(z):
@@ -251,9 +256,9 @@ def test_screen_without_bootstrap_returns_gain_only():
 
 # ------------------------------------------------------------ árvores pequenas
 
-from arvore_rapida.capacidade import (FIGSClassifier, RuleFitLasso,  # noqa: E402
-                                      SumOfOptimalTrees)
-from arvore_rapida.capacidade._kernels import best_depth3  # noqa: E402
+from bettertrees.experimental import RuleFitLasso  # noqa: E402
+from bettertrees.sums import FIGSClassifier, SumOfOptimalTrees  # noqa: E402
+from bettertrees.sums._kernels import best_depth3  # noqa: E402
 
 
 def _brute_tree(mask, depth, Xb, g, h, w, nb, lam, minw):
@@ -347,7 +352,7 @@ def test_rulefit_respects_condition_budget():
 
 @pytest.mark.parametrize("seed", range(4))
 def test_best_depth2_is_bitwise_equal_to_reference(seed):
-    from arvore_rapida.capacidade._kernels import best_depth2_reference
+    from bettertrees.sums._kernels import best_depth2_reference
     rng = np.random.default_rng(seed)
     n, p = 3000, 7
     nb = rng.integers(3, 20, size=p).astype(np.int64)
@@ -365,7 +370,8 @@ def test_best_depth2_is_bitwise_equal_to_reference(seed):
 
 def test_l1_path_matches_sklearn_saga_at_same_lambda():
     from sklearn.linear_model import LogisticRegression
-    from arvore_rapida.capacidade._kernels import l1_logistic_path
+
+    from bettertrees.sums._kernels import l1_logistic_path
     rng = np.random.default_rng(21)
     n, m = 1500, 12
     R = rng.random((n, m)) < rng.uniform(0.05, 0.5, size=m)
@@ -409,7 +415,7 @@ def test_rulefit_path_selects_like_liblinear_and_is_faster():
 
 
 def test_boosted_optimal_d2_reproduces_additive_booster():
-    from arvore_rapida.capacidade import BoostedOptimalTrees
+    from bettertrees.sums import BoostedOptimalTrees
     X, y = _additive_interaction(31, n=3000)
     a = AdditiveTreeBooster(depth=2, learning_rate=0.2, max_rounds=40, patience=10,
                             random_state=3).fit(X, y)
@@ -420,7 +426,7 @@ def test_boosted_optimal_d2_reproduces_additive_booster():
 
 
 def test_boosted_optimal_d3_captures_three_way_interaction():
-    from arvore_rapida.capacidade import BoostedOptimalTrees
+    from bettertrees.sums import BoostedOptimalTrees
     rng = np.random.default_rng(32)
     n = 5000
     X = rng.normal(size=(n, 5))

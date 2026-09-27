@@ -5,8 +5,13 @@ Nenhum caminho de produção importa este módulo.
 
 import numpy as np
 
-from ._data import Split
-from .kernels import cannot_improve, gini, precision_split_gain, remaining_gain_upper_bound
+from bettertrees._data import Split
+from bettertrees.kernels import (
+    cannot_improve,
+    gini,
+    precision_split_gain,
+    remaining_gain_upper_bound,
+)
 
 
 def _scan_histogram_feature_reference(mass, count, edges, parent_mass, *, min_samples_leaf,

@@ -5,7 +5,7 @@ import pytest
 from sklearn.base import clone
 from sklearn.metrics import log_loss
 
-from arvore_rapida import FastDecisionTreeClassifier
+from bettertrees import FastDecisionTreeClassifier
 
 
 @pytest.mark.parametrize("splitter", ["hist", "exact"])

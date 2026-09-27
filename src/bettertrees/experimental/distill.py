@@ -18,7 +18,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from ..estimator import FastDecisionTreeClassifier
 from ..postprocess import hierarchical_shrinkage_probabilities
-from ._common import as_float_matrix, as_target, as_weights
+from ..sums._common import as_float_matrix, as_target, as_weights
 
 TEACHER_DEFAULTS = dict(n_estimators=2000, learning_rate=0.05, num_leaves=31,
                         min_child_samples=20, subsample=0.8, subsample_freq=1,

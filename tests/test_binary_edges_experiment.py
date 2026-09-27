@@ -1,9 +1,7 @@
 """Equivalência do atalho 0/1 com os quantis preservados."""
 
 import numpy as np
-
-from arvore_rapida.core import (_fit_bin_edges_binary, fit_bin_edges,
-                                transform_bins)
+from _core import _fit_bin_edges_binary, fit_bin_edges, transform_bins
 
 
 def test_binary_edges_match_reference_across_prevalence_bins_and_missing():

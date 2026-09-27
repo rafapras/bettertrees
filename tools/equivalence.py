@@ -1,10 +1,10 @@
-"""Gate da extração: o pacote limpo deve reproduzir as previsões do pacote de pesquisa.
+"""Extraction gate: bettertrees must reproduce the research package's predictions.
 
-    python tools/equivalence.py save  ref.npz   # com o pacote de pesquisa no path
-    python tools/equivalence.py check ref.npz   # com o pacote limpo no path
+    python tools/equivalence.py save  tools/reference.npz  # research ``arvore_rapida`` on the path
+    python tools/equivalence.py check tools/reference.npz  # installed ``bettertrees``
 
-Compara ``predict_proba`` de cada estimador público em dados sintéticos
-(com NaN) e no breast_cancer do sklearn; tolerância 1e-12.
+Compares ``predict_proba`` of every public estimator on synthetic data (with NaN)
+and on sklearn's breast_cancer; tolerance 1e-12.
 """
 
 import sys
@@ -23,8 +23,9 @@ def datasets():
     yield "breast_cancer", Xb, yb
 
 
-def estimators():
-    import arvore_rapida as ar
+def estimators(module):
+    import importlib
+    ar = importlib.import_module(module)
     return {
         "tree": lambda: ar.FastDecisionTreeClassifier(max_depth=5, random_state=0),
         "tree_cv": lambda: ar.FastDecisionTreeClassifierCV(),
@@ -37,11 +38,11 @@ def estimators():
     }
 
 
-def predictions():
+def predictions(module):
     out = {}
     for dname, X, y in datasets():
         tr, te = slice(0, len(y) * 3 // 4), slice(len(y) * 3 // 4, None)
-        for ename, make in estimators().items():
+        for ename, make in estimators(module).items():
             m = make().fit(X[tr], y[tr])
             out[f"{dname}/{ename}"] = m.predict_proba(X[te])[:, 1]
     return out
@@ -49,14 +50,14 @@ def predictions():
 
 if __name__ == "__main__":
     mode, path = sys.argv[1], sys.argv[2]
-    got = predictions()
+    got = predictions("arvore_rapida" if mode == "save" else "bettertrees")
     if mode == "save":
         np.savez(path, **got)
-        print(f"{len(got)} referências em {path}")
+        print(f"{len(got)} references saved to {path}")
     else:
         ref = np.load(path)
         bad = [k for k in ref.files if k not in got or np.max(np.abs(ref[k] - got[k])) > 1e-12]
         for k in ref.files:
             d = np.max(np.abs(ref[k] - got[k])) if k in got else np.inf
-            print(f"{'OK ' if k not in bad else 'DIF'} {k}  max|Δ|={d:.2e}")
+            print(f"{'OK ' if k not in bad else 'DIF'} {k}  max_abs_diff={d:.2e}")
         sys.exit(1 if bad else 0)

@@ -18,20 +18,22 @@ módulo que a chama (por exemplo ``search`` ou ``builder``), não aqui.
 import sys as _sys
 import types as _types
 
-from . import _data, _reference
-from . import bins as _bins
-from . import builder as _builder
-from . import kernels as _kernels
-from . import postprocess as _postprocess
-from . import search as _search
-from . import splitters as _splitters
-from ._data import NodeArrays, Split, allocate_nodes, prepare_training_data, validate_X
-from ._reference import (
+import _reference
+from _reference import (
     _find_best_split_exact_precision_reference,
     _find_best_split_exact_reference,
     _scan_histogram_feature_reference,
 )
-from .bins import (
+
+from bettertrees import _data
+from bettertrees import bins as _bins
+from bettertrees import builder as _builder
+from bettertrees import kernels as _kernels
+from bettertrees import postprocess as _postprocess
+from bettertrees import search as _search
+from bettertrees import splitters as _splitters
+from bettertrees._data import NodeArrays, Split, allocate_nodes, prepare_training_data, validate_X
+from bettertrees.bins import (
     _count_binary_values,
     _fit_bin_edges_binary,
     _fit_bin_edges_column,
@@ -41,8 +43,8 @@ from .bins import (
     transform_bins,
     transform_bins_row_major,
 )
-from .builder import _grow_tree, grow_tree_exact, grow_tree_hist
-from .kernels import (
+from bettertrees.builder import _grow_tree, grow_tree_exact, grow_tree_hist
+from bettertrees.kernels import (
     _build_all_histograms_feature_parallel,
     _build_all_histograms_row_major,
     _find_best_split_exact_gini_numba,
@@ -66,13 +68,13 @@ from .kernels import (
     precision_split_gain,
     remaining_gain_upper_bound,
 )
-from .postprocess import (
+from bettertrees.postprocess import (
     finite_leaf_regions,
     predict_proba_nodes,
     project_monotonic_leaf_probabilities,
     prune_tree_cost_complexity,
 )
-from .search import (
+from bettertrees.search import (
     _build_histograms_for_node,
     _find_best_split_hist_feature_major,
     find_best_split_exact,
@@ -82,7 +84,7 @@ from .search import (
     scan_histogram_feature,
     scan_histogram_feature_precision,
 )
-from .splitters import resolve_splitter_spec
+from bettertrees.splitters import resolve_splitter_spec
 
 _SOURCE_MODULES = (_data, _reference, _bins, _builder, _kernels,
                    _postprocess, _search, _splitters)

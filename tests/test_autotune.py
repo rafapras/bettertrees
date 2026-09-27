@@ -2,12 +2,14 @@
 
 import numpy as np
 import pytest
-
-from arvore_rapida import FastDecisionTreeClassifier, FastDecisionTreeClassifierCV
-from arvore_rapida.postprocess import (expansion_steps,
-                                       hierarchical_shrinkage_probabilities,
-                                       prefix_leaf_ids)
 from tree_invariants import check_tree_invariants
+
+from bettertrees import FastDecisionTreeClassifier, FastDecisionTreeClassifierCV
+from bettertrees.postprocess import (
+    expansion_steps,
+    hierarchical_shrinkage_probabilities,
+    prefix_leaf_ids,
+)
 
 
 def _data(seed=0, n=1500, p=6, noise=1.0, classes=2):
