@@ -15,8 +15,11 @@ from sklearn.utils.validation import check_is_fitted
 from .estimator import FastDecisionTreeClassifier
 from .postprocess import expansion_steps, hierarchical_shrinkage_probabilities, prefix_leaf_ids
 
-DEFAULT_LEAVES = (4, 8, 16, 32, 64, 128, 256)
-DEFAULT_SHRINKAGE = (1.0, 5.0, 20.0, 50.0, 200.0)
+# Grade larga: o sklearn + HS tunado escolhe > 256 folhas e λ > 200 com frequência;
+# parar em 256/200 custava 0,7% de log-loss (MENSURACAO_CAPACIDADE_PENDENTE.md).
+# Folhas além de n/min_samples_leaf não são alcançadas, então o custo em n pequeno é nulo.
+DEFAULT_LEAVES = (4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096)
+DEFAULT_SHRINKAGE = (1.0, 5.0, 20.0, 50.0, 200.0, 500.0, 1000.0)
 
 
 def _log_loss(y, proba, weights):
