@@ -95,12 +95,18 @@ dataset, Wilcoxon test. Log-loss change is relative, AUC change in points.
 | claim | result |
 |---|---|
 | FIGS vs a greedy tree with the same number of cuts (4 / 8 / 16) | −1.5% / −1.7% / −1.9% log-loss, +1.1 / +1.6 / +1.7 AUC points, wins 17–18 of 20 datasets (p ≤ 0.001) |
+| FIGS vs a LightGBM restricted to ⌊b/3⌋ depth-2 trees, tuned (4 / 8 / 16 cuts) | −3.5% / −3.0% / −1.5% log-loss, wins 20/0, 20/0, 19/1; −0.7% at 32, tie at 64 |
+| FIGS vs rpart (R, cost-complexity pruning) and one LightGBM tree (4 / 8 / 16 cuts) | rpart: −3.9% / −5.5% / −4.5%; LightGBM tree: −2.4% / −3.2% / −3.5% (19–20 wins of 20) |
+| Our FIGS (logit, backfitting) vs FIGS from imodels (4 / 8 / 16 cuts) | −0.5% / −2.5% / −4.4% log-loss (15–17 wins of 20) |
 | Optimal vs greedy search inside the same sum (16 / 32 / 64 cuts) | −0.2% / −0.3% / −0.5% log-loss (p < 0.01) |
-| Additive booster (free capacity) vs tuned LightGBM | +1.2% log-loss, −0.24 AUC points, in ~3 s vs ~155 s including tuning |
+| Additive booster (free capacity) vs tuned LightGBM / XGBoost / CatBoost | median +1.2% / +0.7% / +1.1% log-loss, −0.2 AUC points, 15–50× faster including tuning |
+| Single-tree engine vs scikit-learn (same depth) | 3.0× faster (hist) and 2.9× (exact) for n ≥ 10k; for n ≤ 3k use `splitter="exact"` (1.7×) |
 
 Numbers are preliminary; the final nested-CV run and the paper will replace them.
 Where it does not help: hierarchical targets (e.g. `pol`) and high-order
-interactions (e.g. `electricity`), where one deep tree or boosting is the right shape.
+interactions (e.g. `electricity`), where one deep tree or boosting is the right
+shape — at free capacity the 90th percentile of the gap to LightGBM is large (+46%)
+even though the median is +1.2%.
 
 ## Credits and inspirations
 
