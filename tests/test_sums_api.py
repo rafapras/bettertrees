@@ -14,6 +14,7 @@ from bettertrees.sums import (
     BoostedOptimalTrees,
     CompactTreeBooster,
     FIGSClassifier,
+    LightGBMRefitClassifier,
     RashomonFIGSClassifier,
     SumOfOptimalTrees,
 )
@@ -24,7 +25,8 @@ ESTIMATORS = [SumOfOptimalTrees(), FIGSClassifier(), AdditiveTreeBooster(max_rou
               BoostedOptimalTrees(depth=2, max_rounds=20),
               BaggedFIGSClassifier(max_splits=8, n_bags=4, distill=True),
               RashomonFIGSClassifier(max_splits=8, n_mutations=5),
-              CompactTreeBooster(max_splits=12)]
+              CompactTreeBooster(max_splits=12),
+              LightGBMRefitClassifier(max_splits=12, min_child_samples=1)]
 
 
 def _expected_failures(est):

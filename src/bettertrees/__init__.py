@@ -17,16 +17,19 @@ from .autotune import FastDecisionTreeClassifierCV
 from .estimator import FastDecisionTreeClassifier
 from .multilevel import fit_multilevel_tree
 from .sums import (
-                   AdditiveTreeBooster,
-                   BaggedFIGSClassifier,
-                   CompactTreeBooster,
-                   FIGSClassifier,
-                   RashomonFIGSClassifier,
-                   SumOfOptimalTrees,
+    AdditiveTreeBooster,
+    BaggedFIGSClassifier,
+    CompactTreeBooster,
+    FIGSClassifier,
+    LightGBMRefitClassifier,
+    RashomonFIGSClassifier,
+    SumOfOptimalTrees,
+    from_lightgbm,
 )
 
 __version__ = "0.1.0.dev0"
 
 __all__ = ["AdditiveTreeBooster", "BaggedFIGSClassifier", "CompactTreeBooster", "FIGSClassifier",
-           "FastDecisionTreeClassifier", "FastDecisionTreeClassifierCV", "RashomonFIGSClassifier",
-           "SumOfOptimalTrees", "__version__", "fit_multilevel_tree"]
+           "FastDecisionTreeClassifier", "FastDecisionTreeClassifierCV", "LightGBMRefitClassifier",
+           "RashomonFIGSClassifier",
+           "SumOfOptimalTrees", "__version__", "fit_multilevel_tree", "from_lightgbm"]

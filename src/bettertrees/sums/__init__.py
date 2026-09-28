@@ -10,6 +10,7 @@
 
 from .additive import AdditiveTreeBooster
 from .compact import CompactTreeBooster
+from .imported import LightGBMRefitClassifier, TreeSum, from_lightgbm
 from .robust import BaggedFIGSClassifier, RashomonFIGSClassifier
 from .screen import screen_features
 from .smalltrees import BoostedOptimalTrees, FIGSClassifier, SmallTree, SumOfOptimalTrees
@@ -20,8 +21,11 @@ __all__ = [
     "BoostedOptimalTrees",
     "CompactTreeBooster",
     "FIGSClassifier",
+    "LightGBMRefitClassifier",
     "RashomonFIGSClassifier",
     "SmallTree",
     "SumOfOptimalTrees",
+    "TreeSum",
+    "from_lightgbm",
     "screen_features",
 ]
