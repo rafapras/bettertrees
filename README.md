@@ -81,14 +81,25 @@ contributions, SHAP export) follow the edit:
 ```python
 model.prune(tree, node)                      # collapse a cut into a leaf
 model.set_cut(tree, node, "income", 50_000)  # move / replace a cut (snaps to a bin edge)
+model.split_leaf(tree, leaf, "debt", 2.5)   # add a cut by hand
+model.add_stump("age", 65)                   # add a rule as a new tree
 model.drop_tree(k); model.merge_duplicates()
 model.set_leaf_value(tree, leaf, 0.0)        # business override
 model.refit_leaves(X, y)                     # re-estimate the leaves for the new structure
+model.refit_leaves(X, y, trees=[0, 3])       # partial refit: the other trees stay frozen
+model.refit_leaves(X, y, monotone={"income": -1, "age": +1})  # monotone constraints
+model.monotone_violations("income", increasing=False)         # exact check (empty = ok)
 model.cut_alternatives(X_val, y_val, tree, node, epsilon=0.01)  # near-equivalent cuts
 ```
 
+A LightGBM model becomes an editable sum with `from_lightgbm(lgbm, X, y)` (exact
+predictions); `LightGBMRefitClassifier` also refits its leaves jointly, which beats the
+same LightGBM at 4-64 cuts in our benchmark.
+
 `RashomonFIGSClassifier` searches structures by mutating cuts and keeps the set within
-`epsilon` of the best validation loss; `BaggedFIGSClassifier` picks cuts by a bootstrap vote.
+`epsilon` of the best validation loss: `rashomon_models()` returns them as estimators and
+`rashomon_importance(X)` the range of each feature's importance across equally good
+models. `BaggedFIGSClassifier` picks cuts by a bootstrap vote.
 
 ## Interpretation API
 

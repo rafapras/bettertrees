@@ -7,8 +7,10 @@ the nearest bin edge (the method returns the value actually used). After a
 structural edit the leaves keep their old values until ``refit_leaves`` is
 called with data, so an edit is never silently re-estimated.
 
-Editing          ``prune``, ``set_cut``, ``drop_tree``, ``merge_duplicates``,
-                 ``set_leaf_value``, ``refit_leaves``
+Editing          ``prune``, ``set_cut``, ``split_leaf``, ``add_stump``, ``drop_tree``,
+                 ``merge_duplicates``, ``set_leaf_value``, ``refit_leaves`` (all or some
+                 trees, optionally under monotone constraints)
+Constraints      ``monotone_violations``, ``enforce_monotone``
 Rashomon view    ``cut_alternatives``: other cuts for one node whose refitted
                  model is within ``epsilon`` of the current loss.
 
@@ -50,6 +52,86 @@ def _key(tree):
         return (int(tree.feature[node]), int(tree.threshold[node]),
                 walk(tree.left[node]), walk(tree.right[node]))
     return walk(0)
+
+
+def _leaf_boxes(tree):
+    """{leaf: {feature: (lo, hi)}}: the leaf holds bins lo < b <= hi on each feature."""
+    out = {}
+
+    def walk(node, box):
+        if tree.left[node] == -1:
+            out[node] = box
+            return
+        f, t = int(tree.feature[node]), int(tree.threshold[node])
+        lo, hi = box.get(f, (-1, 1 << 30))
+        walk(tree.left[node], {**box, f: (lo, min(hi, t))})
+        walk(tree.right[node], {**box, f: (max(lo, t), hi)})
+
+    walk(0, {})
+    return out
+
+
+def _compatible(a, b, skip):
+    """Boxes ``a`` and ``b`` overlap on every feature except ``skip``."""
+    for f in set(a) | set(b):
+        if f == skip:
+            continue
+        lo = max(a.get(f, (-1, 0))[0], b.get(f, (-1, 0))[0])
+        hi = min(a.get(f, (0, 1 << 30))[1], b.get(f, (0, 1 << 30))[1])
+        if lo >= hi:
+            return False
+    return True
+
+
+def _subtree_leaves(tree, node):
+    stack, out = [node], []
+    while stack:
+        k = stack.pop()
+        if tree.left[k] == -1:
+            out.append(k)
+        else:
+            stack += [tree.left[k], tree.right[k]]
+    return out
+
+
+def _monotone_pairs(tree, feature):
+    """(low leaf, high leaf) pairs that must be ordered for monotonicity in
+    ``feature``: for every cut on ``feature``, a leaf of its left subtree and a
+    leaf of its right subtree reachable from each other by changing ``feature`` only."""
+    boxes = _leaf_boxes(tree)
+    pairs = []
+    for k in range(len(tree.feature)):
+        if tree.left[k] != -1 and int(tree.feature[k]) == feature:
+            for a in _subtree_leaves(tree, tree.left[k]):
+                for b in _subtree_leaves(tree, tree.right[k]):
+                    if _compatible(boxes[a], boxes[b], feature):
+                        pairs.append((a, b))
+    return pairs
+
+
+def _project_monotone(tree, constraints, weights=None, max_passes=500):
+    """Pool violating leaf pairs (weighted mean) until ``tree`` is monotone in every
+    constrained feature. ``constraints``: {feature: +1 increasing / -1 decreasing}."""
+    wts = np.ones(len(tree.feature)) if weights is None else np.maximum(weights, 1e-12)
+    wts = np.asarray(wts, dtype=np.float64).copy()
+    pairs = [(a, b, sign) for f, sign in constraints.items()
+             for a, b in _monotone_pairs(tree, f)]
+    if not pairs:
+        return tree
+    v = np.asarray(tree.value, dtype=np.float64).copy()
+    for _ in range(max_passes):
+        worst, pick = 1e-12, None
+        for a, b, sign in pairs:
+            gap = sign * (v[a] - v[b])
+            if gap > worst:
+                worst, pick = gap, (a, b)
+        if pick is None:
+            break
+        a, b = pick
+        v[a] = v[b] = (wts[a] * v[a] + wts[b] * v[b]) / (wts[a] + wts[b])
+        wts[a] = wts[b] = wts[a] + wts[b]
+    tree.value = v
+    return tree
 
 
 def _log_loss(y, margin, w):
@@ -104,25 +186,35 @@ class TreeEditMixin:
             raise ValueError("y has labels not seen at fit time.")
         return rebin(Xv, self.bin_edges_), target, as_weights(sample_weight, len(Xv))
 
-    def _refit_binned(self, Xb, target, w, lam, sweeps):
+    def _refit_binned(self, Xb, target, w, lam, sweeps, trees=None, refit_base=True,
+                      monotone=None):
+        """Newton backfitting of the leaves of ``trees`` (indices; None = all) and,
+        with ``refit_base``, of the base; the other trees stay frozen. With
+        ``monotone`` ({feature index: +1/-1}) every step is projected back onto
+        the monotone set (pooling of violating leaves, weighted by hessian mass)."""
         lam_old, lr_old = getattr(self, "lam_", None), getattr(self, "learning_rate_", None)
         self.lam_, self.learning_rate_ = float(lam), 1.0
-        contribs = [t.value[t.leaf_ids(Xb)] for t in self.trees_]
+        active = range(len(self.trees_)) if trees is None else sorted(set(trees))
+        ids = [t.leaf_ids(Xb) for t in self.trees_]
         margin = np.full(len(Xb), float(self.base_margin_))
-        if contribs:
-            margin = margin + np.sum(contribs, axis=0)
+        for t, i in zip(self.trees_, ids):
+            margin = margin + t.value[i]
         for _ in range(int(sweeps)):
-            for k, tree in enumerate(self.trees_):
-                ids = tree.leaf_ids(Xb)
+            for k in active:
+                tree = self.trees_[k]
                 g, h = grad_hess(target, margin, w)
-                step = newton_leaf_values(ids, g, h, len(tree.feature), self.lam_)
-                tree.value = tree.value + step
-                contribs[k] = contribs[k] + step[ids]
-                margin = margin + step[ids]
-            g, h = grad_hess(target, margin, w)
-            delta = -float(np.sum(g)) / max(float(np.sum(h)), 1e-12)
-            self.base_margin_ += delta
-            margin = margin + delta
+                old = tree.value[ids[k]]
+                tree.value = tree.value + newton_leaf_values(ids[k], g, h, len(tree.feature),
+                                                             self.lam_)
+                if monotone:
+                    mass = np.bincount(ids[k], weights=h, minlength=len(tree.feature))
+                    _project_monotone(tree, monotone, mass)
+                margin = margin + tree.value[ids[k]] - old
+            if refit_base:
+                g, h = grad_hess(target, margin, w)
+                delta = -float(np.sum(g)) / max(float(np.sum(h)), 1e-12)
+                self.base_margin_ += delta
+                margin = margin + delta
         self.lam_, self.learning_rate_ = lam_old, lr_old
         return margin
 
@@ -158,6 +250,27 @@ class TreeEditMixin:
         t.feature[node], t.threshold[node] = f, b
         return real
 
+    def split_leaf(self, tree, leaf, feature, threshold):
+        """Add the cut ``feature <= threshold`` at ``leaf`` (both children inherit its
+        value; call ``refit_leaves`` to re-estimate). Returns (left, right, real threshold)."""
+        t = self._check_node(tree, leaf, internal=False)
+        f = self._feature_index(feature)
+        b, real = self._snap(f, threshold)
+        left, right = t.split(leaf, f, b)
+        return left, right, real
+
+    def add_stump(self, feature, threshold, left_value=0.0, right_value=0.0):
+        """Append a one-cut tree (a new rule) to the sum. Returns (tree index, real threshold)."""
+        from .smalltrees import SmallTree
+        check_is_fitted(self, "trees_")
+        f = self._feature_index(feature)
+        b, real = self._snap(f, threshold)
+        t = SmallTree()
+        t.split(0, f, b)
+        t.value = np.array([0.0, float(left_value), float(right_value)])
+        self.trees_.append(t)
+        return len(self.trees_) - 1, real
+
     def drop_tree(self, tree):
         """Remove a whole tree from the sum. Returns self."""
         self._check_node(tree, 0)
@@ -189,14 +302,60 @@ class TreeEditMixin:
         t.value[node] = float(value)
         return self
 
-    def refit_leaves(self, X, y, sample_weight=None, lam=None, sweeps=5):
-        """Re-estimate every leaf and the base for the current structure.
+    def refit_leaves(self, X, y, sample_weight=None, lam=None, sweeps=5, trees=None,
+                     refit_base=True, monotone=None):
+        """Re-estimate the leaves for the current structure (cuts are not changed).
 
         Full Newton backfitting on (X, y) with L2 penalty ``lam`` (default: the
-        fitted ``lam_``, or 1). Cuts are not changed. Returns self."""
+        fitted ``lam_``, or 1). ``trees``: indices of the trees to refit (the
+        others stay frozen; None = all). ``refit_base``: also re-estimate the base.
+        ``monotone``: {feature (index or name): +1 increasing / -1 decreasing};
+        every Newton step is projected, so the result is monotone. Returns self."""
         Xb, target, w = self._binned_data(X, y, sample_weight)
         lam = lam if lam is not None else (getattr(self, "lam_", None) or 1.0)
-        self._refit_binned(Xb, target, w, lam, sweeps)
+        if trees is not None:
+            for k in trees:
+                self._check_node(k, 0)
+        cons = self._constraints(monotone)
+        self._refit_binned(Xb, target, w, lam, sweeps, trees, refit_base, cons)
+        return self
+
+    # ---------------------------------------------------------------- constraints
+
+    def _constraints(self, monotone):
+        if not monotone:
+            return None
+        out = {}
+        for f, sign in monotone.items():
+            if sign not in (1, -1):
+                raise ValueError("monotone directions must be +1 or -1.")
+            out[self._feature_index(f)] = int(sign)
+        return out
+
+    def monotone_violations(self, feature, increasing=True, tol=1e-12):
+        """Leaf pairs that break monotonicity in ``feature``, as a list of
+        ``(tree, lower_leaf, upper_leaf, gap)`` (empty = monotone). Exact per
+        tree: for every cut on ``feature``, each leaf of its left subtree is
+        compared with each leaf of its right subtree reachable by changing
+        ``feature`` only; a sum of monotone trees is monotone."""
+        check_is_fitted(self, "trees_")
+        f = self._feature_index(feature)
+        sign = 1 if increasing else -1
+        out = []
+        for i, t in enumerate(self.trees_):
+            for a, b in _monotone_pairs(t, f):
+                gap = sign * (t.value[a] - t.value[b])
+                if gap > tol:
+                    out.append((i, a, b, float(gap)))
+        return out
+
+    def enforce_monotone(self, monotone):
+        """Make the sum monotone ({feature: +1/-1}) by pooling violating leaves
+        (equal weights; ``refit_leaves(..., monotone=...)`` weighs by data). Returns self."""
+        check_is_fitted(self, "trees_")
+        cons = self._constraints(monotone)
+        for t in self.trees_:
+            _project_monotone(t, cons)
         return self
 
     # ---------------------------------------------------------------- Rashomon

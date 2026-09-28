@@ -205,6 +205,10 @@ class RashomonFIGSClassifier(FIGSClassifier):
     trees_, base_margin_, classes_, bin_edges_, ...
         As in ``FIGSClassifier``.
     rashomon_set_ : list of (validation log-loss, set of cuts)
+    rashomon_members_ : list of (validation log-loss, trees)
+        Distinct near-optimal structures; use ``rashomon_models()`` to get them
+        as estimators and ``rashomon_importance(X)`` for the range of each
+        feature's importance across the set.
     history_ : ndarray
         Validation loss of the current structure after each mutation.
     """
@@ -310,6 +314,8 @@ class RashomonFIGSClassifier(FIGSClassifier):
             self.trees_ = current
             self._refit(self.trees_, Xb, target, w, self.refit_sweeps)
             self.rashomon_set_, self.history_ = [], np.array([])
+            self.rashomon_members_ = [(np.nan, self._copy(self.trees_))]
+            self.rashomon_base_ = float(self.base_margin_)
             return self
         self._refit(current, Xt, yt, wt, self.refit_sweeps)
         cur_loss = _log_loss(yv, self._margin(current, Xv), wv)
@@ -335,7 +341,67 @@ class RashomonFIGSClassifier(FIGSClassifier):
         else:
             chosen = min(near, key=lambda s: s[0])[1]
         self.history_ = np.array(history)
+        # the usable Rashomon set: distinct structures, leaves fitted on the training split
+        seen, members = set(), []
+        for loss, trees in sorted(near, key=lambda s: s[0]):
+            key = frozenset(_cuts(trees))
+            if key not in seen:
+                seen.add(key)
+                members.append((loss, self._copy(trees)))
+        self.rashomon_members_ = members
+        self.rashomon_base_ = float(self.base_margin_)
         self.base_margin_ = base_margin(target, w)
         self.trees_ = chosen
         self._refit(self.trees_, Xb, target, w, self.refit_sweeps)
         return self
+
+    # ---------------------------------------------------------------- Rashomon set
+
+    def rashomon_models(self, X=None, y=None, sample_weight=None):
+        """The Rashomon set as fitted estimators (best validation loss first).
+
+        Each is a copy of this estimator holding one near-optimal structure
+        (distinct cut sets only), with the leaves fitted on the training split;
+        with ``X, y`` the leaves are refitted on them. Every copy has the full
+        prediction, explanation and editing API."""
+        import copy
+
+        from sklearn.utils.validation import check_is_fitted
+        check_is_fitted(self, "rashomon_members_")
+        out = []
+        for loss, trees in self.rashomon_members_:
+            m = copy.copy(self)
+            m.rashomon_members_ = []
+            m.trees_ = self._copy(trees)
+            m.base_margin_ = self.rashomon_base_
+            m.validation_loss_ = float(loss)
+            if X is not None:
+                m.refit_leaves(X, y, sample_weight=sample_weight, lam=self.lam_,
+                               sweeps=self.refit_sweeps)
+            out.append(m)
+        return out
+
+    def rashomon_importance(self, X):
+        """Range of each feature's importance over the Rashomon set.
+
+        Importance of a feature in one model = mean |contribution| of the trees
+        that use it (a tree's share is split equally among its features),
+        normalized to sum 1. Returns {feature name: (min, mean, max)} over the
+        set: a feature whose minimum is near 0 is not needed by some equally
+        good model."""
+        from ._common import predict_input, rebin
+        Xb = rebin(predict_input(self, X, "trees_"), self.bin_edges_)
+        names = (list(self.feature_names_in_) if hasattr(self, "feature_names_in_")
+                 else [f"x{j}" for j in range(self.n_features_in_)])
+        rows = []
+        for _, trees in self.rashomon_members_:
+            imp = np.zeros(len(names))
+            for t in trees:
+                feats = sorted({int(f) for f, lc in zip(t.feature, t.left) if lc != -1})
+                if feats:
+                    share = float(np.mean(np.abs(t.value[t.leaf_ids(Xb)]))) / len(feats)
+                    imp[feats] += share
+            rows.append(imp / imp.sum() if imp.sum() > 0 else imp)
+        rows = np.array(rows)
+        return {n: (float(rows[:, j].min()), float(rows[:, j].mean()), float(rows[:, j].max()))
+                for j, n in enumerate(names)}
