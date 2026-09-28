@@ -130,3 +130,7 @@ data, 0 elsewhere), depth-3 optimal trees (slow, no gain over d2).
   LightGBM-shaped candidate trees in the compact booster (+0.4 to +1.1 %),
   no early stopping (+1.1 %). HR, heloc and credit_card lose in every shape,
   including LightGBM's own; the 128-cut claim is "tie with LightGBM and XGBoost".
+- With the minimum leaf weight in the tuning (`figs_tuned2`, like LightGBM's
+  min_child_samples), family selection by inner CV beats XGBoost with <= b cuts
+  at every budget up to 128 (-0.29 % at 128, 11/5, p = 0.021, 16 datasets) and
+  LightGBM up to 64; at 128 it ties LightGBM (+0.02 %, 7/9).
