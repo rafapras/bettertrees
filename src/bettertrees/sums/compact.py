@@ -61,6 +61,38 @@ def _absorb(host, node, small, snode):
     _absorb(host, host.right[node], small, small.right[snode])
 
 
+def _leafwise_tree(Xb, g, h, w, nb, max_leaves, lam, min_weight):
+    """Greedy best-first (leaf-wise) Newton tree with at most ``max_leaves`` leaves,
+    the tree shape LightGBM grows; None if no cut gains."""
+    n, B = len(Xb), int(nb.max())
+    tree = SmallTree()
+    ids = np.zeros(n, dtype=np.int64)
+    best = {}
+
+    def score(nodes):
+        local = np.full(n, -1, dtype=np.int64)
+        for j, k in enumerate(nodes):
+            local[ids == k] = j
+        hist = node_hist(Xb, g, h, w, local, len(nodes), B)
+        for j, k in enumerate(nodes):
+            gains, cuts = best_cut_1d(hist[j], nb, lam, min_weight)
+            f = int(np.argmax(gains))
+            if gains[f] > 0:
+                best[k] = (float(gains[f]), f, int(cuts[f]))
+
+    score([0])
+    while best and len(tree.leaves) < max_leaves:
+        k = max(best, key=lambda x: best[x][0])
+        _, f, t = best.pop(k)
+        left, right = tree.split(k, f, t)
+        rows = ids == k
+        go_left = Xb[:, f] <= t
+        ids[rows & go_left] = left
+        ids[rows & ~go_left] = right
+        score([left, right])
+    return tree if tree.n_splits else None
+
+
 class _TermSet:
     """Merged terms {structure key: SmallTree}. A tree whose partition is refined
     by another one (identical, a stump with the same root, or a tree with a
@@ -147,6 +179,9 @@ class CompactTreeBooster(_AdditiveTrees):
         0 disables it.
     max_depth : int, default=4
         Depth limit of grown trees.
+    max_leaves : int, default=0
+        If >= 3, also offer every round a greedy leaf-wise tree with up to this
+        many leaves (LightGBM's shape), scored per new cut like the others. 0 = off.
     random_state : int, default=0
 
     Attributes
@@ -164,7 +199,7 @@ class CompactTreeBooster(_AdditiveTrees):
                  min_weight=20.0, max_bins=32, validation_fraction=0.15, patience=50,
                  refit=False, refit_lam=None, refit_sweeps=4, max_features_d2=32,
                  max_features_d3=12, feature_screen="lgbm", new_cut_penalty=1.0,
-                 grow_top=0, max_depth=4, random_state=0):
+                 grow_top=0, max_depth=4, max_leaves=0, random_state=0):
         self.max_splits = max_splits
         self.depth = depth
         self.learning_rate = learning_rate
@@ -183,6 +218,7 @@ class CompactTreeBooster(_AdditiveTrees):
         self.new_cut_penalty = new_cut_penalty
         self.grow_top = grow_top
         self.max_depth = max_depth
+        self.max_leaves = max_leaves
         self.random_state = random_state
 
     # ---------------------------------------------------------------- search
@@ -260,8 +296,13 @@ class CompactTreeBooster(_AdditiveTrees):
             best_raw = max(best_raw, raw)
             k = _key(tree)
             scored.append((raw / (1 + pen * terms.cost(k)), k, tree))
-        for d in depths:
-            tree = self._new_tree(d, Xb, g, h, w, nb)
+        extra = []
+        if int(self.max_leaves) >= 3:
+            lw = _leafwise_tree(Xb, g, h, w, nb, min(int(self.max_leaves), _SLOTS // 2),
+                                self.lam, self.min_weight)
+            if lw is not None:
+                extra.append(lw)
+        for tree in [self._new_tree(d, Xb, g, h, w, nb) for d in depths] + extra:
             if tree is None:
                 continue
             raw = self._gain(tree, Xb, g, h)

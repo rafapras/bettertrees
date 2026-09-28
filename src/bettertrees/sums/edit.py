@@ -108,7 +108,9 @@ class TreeEditMixin:
         lam_old, lr_old = getattr(self, "lam_", None), getattr(self, "learning_rate_", None)
         self.lam_, self.learning_rate_ = float(lam), 1.0
         contribs = [t.value[t.leaf_ids(Xb)] for t in self.trees_]
-        margin = self.base_margin_ + (np.sum(contribs, axis=0) if contribs else 0.0)
+        margin = np.full(len(Xb), float(self.base_margin_))
+        if contribs:
+            margin = margin + np.sum(contribs, axis=0)
         for _ in range(int(sweeps)):
             for k, tree in enumerate(self.trees_):
                 ids = tree.leaf_ids(Xb)
