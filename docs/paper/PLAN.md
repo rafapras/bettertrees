@@ -139,3 +139,9 @@ data, 0 elsewhere), depth-3 optimal trees (slow, no gain over d2).
   shape-free LightGBM, -1.0 / -0.8 / -1.0 / -0.5 % at 4/8/16/32 cuts
   (p <= 0.002), tie at 64 and 128, at 0.03-0.6x its total time; same picture vs
   XGBoost. (Rule chosen on split (0,0) of the same datasets: a mild selection bias.)
+- LightGBM imported into bettertrees with the leaves refitted jointly
+  (`LightGBMRefitClassifier`, refit_lam tuned) beats the same shape-tuned
+  LightGBM at 4-64 cuts (-0.5 to -0.7 %, p <= 0.002) and ties it at 128
+  (-0.02 %). With it in the family selection: vs LightGBM -1.3 / -1.0 / -0.7 /
+  -0.5 / -0.5 % at 4-64 (p <= 0.003), -0.09 % at 128 (9/7, p = 0.21); vs XGBoost
+  significant at every budget including 128 (-0.40 %, 12/4, p = 0.011).
