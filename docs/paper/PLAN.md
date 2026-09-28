@@ -43,7 +43,7 @@ interaction (hierarchical targets, non-stationary series).
 | RQ | question | evidence (prelim) | still needed |
 |---|---|---|---|
 | RQ1 | At 4/8/16 cuts, does a sum of trees beat single trees of the same size? | FIGS vs greedy tree −1.5/−1.7/−1.9% log-loss, 17–18/20 wins, p ≤ 0.001; vs 1 LightGBM tree −2.8/−4.8/−4.7% | ConTree (running), rpart (running) |
-| RQ2 | Is it "just a small LightGBM"? | vs LightGBM with ⌊b/3⌋ depth-2 trees, tuned: FIGS −4.0/−3.3/−1.4% (25/0, 23/2, 20/5 wins); tie at 32–64 cuts | ondas/grandes tiers (running) |
+| RQ2 | Is it "just a small LightGBM"? | vs LightGBM with ⌊b/3⌋ depth-2 trees, tuned: FIGS −4.0/−3.3/−1.4% (25/0, 23/2, 20/5 wins); tie at 32–64 cuts. Shape-free control (LightGBM, ≤ b cuts, leaves per tree tuned in 2..b+1): FIGS −1.3/−0.8/−0.8/−0.5% at 4/8/16/32 (20/0, 18/2, 14/6, 14/6), tie at 64; sum_d2 ties it (−0.1 to −0.5%) at every budget. Below 10k rows FIGS loses at 32–64 (full Newton step, no shrinkage: variance) | bagged structure selection at 32–64 (planned) |
 | RQ3 | Does optimal search matter inside the sum? | optimal vs greedy d2 in the same sum: 0% at 4–8 cuts, −0.2/−0.3/−0.5% at 16/32/64 (p < 0.01) | — |
 | RQ4 | Why? | replication counts + stumps-only GAM ablation (`ESTRUTURA_CART_VS_SOMA.md`) | figure |
 | RQ5 | Free capacity vs boosting | additive d2 +1.2% log-loss, −0.24 AUC pts vs tuned LightGBM, 3 s vs 155 s; = LightGBM-d2 control (−0.1%, p = 0.57) | ratio at max capacity table |

@@ -96,6 +96,7 @@ dataset, Wilcoxon test. Log-loss change is relative, AUC change in points.
 |---|---|
 | FIGS vs a greedy tree with the same number of cuts (4 / 8 / 16) | −1.5% / −1.7% / −1.9% log-loss, +1.1 / +1.6 / +1.7 AUC points, wins 17–18 of 20 datasets (p ≤ 0.001) |
 | FIGS vs a LightGBM restricted to ⌊b/3⌋ depth-2 trees, tuned (4 / 8 / 16 cuts) | −3.5% / −3.0% / −1.5% log-loss, wins 20/0, 20/0, 19/1; −0.7% at 32, tie at 64 |
+| FIGS vs a LightGBM with at most b cuts whose tree shape is tuned too (4 / 8 / 16 / 32 cuts) | −1.3% / −0.8% / −0.8% / −0.5% log-loss (wins 20/0, 18/2, 14/6, 14/6; p ≤ 0.02), tie at 64 |
 | FIGS vs rpart (R, cost-complexity pruning) and one LightGBM tree (4 / 8 / 16 cuts) | rpart: −3.9% / −5.5% / −4.5%; LightGBM tree: −2.4% / −3.2% / −3.5% (19–20 wins of 20) |
 | Our FIGS (logit, backfitting) vs FIGS from imodels (4 / 8 / 16 cuts) | −0.5% / −2.5% / −4.4% log-loss (15–17 wins of 20) |
 | Optimal vs greedy search inside the same sum (16 / 32 / 64 cuts) | −0.2% / −0.3% / −0.5% log-loss (p < 0.01) |
