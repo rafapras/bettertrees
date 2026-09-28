@@ -96,9 +96,9 @@ def _grow_tree(X, y, weights, *, n_classes, max_depth, min_samples_leaf,
     if reuse_parent_histograms and splitter != "hist":
         raise ValueError("Parent-child histogram reuse requires splitter='hist'.")
     if reuse_parent_histograms and max_leaf_nodes is not None:
-        raise ValueError("Parent-child histogram reuse (experimental) requires max_leaf_nodes=None.")
+        raise ValueError("Parent-child histogram reuse requires max_leaf_nodes=None.")
     if reuse_parent_histograms and objective != "gini":
-        raise ValueError("Parent-child histogram reuse (experimental) requires objective='gini'.")
+        raise ValueError("Parent-child histogram reuse requires objective='gini'.")
     if max_feature_repeats is not None and max_feature_repeats < 1:
         raise ValueError("max_feature_repeats must be a positive integer or None.")
     spec = resolve_splitter_spec(splitter, objective, stopping)
@@ -125,7 +125,7 @@ def _grow_tree(X, y, weights, *, n_classes, max_depth, min_samples_leaf,
     if root_mass <= 0:
         raise ValueError("The total training weight must be positive.")
     if reuse_parent_histograms and not np.all(weights == 1.0):
-        raise ValueError("Parent-child histogram reuse (experimental) requires unit sample weights.")
+        raise ValueError("Parent-child histogram reuse requires unit sample weights.")
     local_stats = stats if stats is not None else {}
     local_stats.setdefault("nodes_visited", 0)
     local_stats.setdefault("nodes_split", 0)

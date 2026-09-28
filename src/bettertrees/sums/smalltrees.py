@@ -1,16 +1,16 @@
-"""Somas de poucas árvores pequenas em logit: K árvores ótimas e FIGS.
+"""Logit sums of a few small trees: K optimal trees and FIGS.
 
-Representação comum (``SmallTree``): arrays por nó (feature, threshold em
-bins, left, right, value); folha tem left = right = -1. ``x <= t`` (em bins)
-vai à esquerda, NaN (bin 0) sempre à esquerda. O custo de complexidade é o
-número de cortes (nós internos), somado entre árvores.
+Shared representation (``SmallTree``): per-node arrays (feature, threshold in
+bins, left, right, value); a leaf has left = right = -1. ``x <= t`` (in bins)
+goes left, NaN (bin 0) always goes left. The complexity cost is the number of
+cuts (internal nodes), summed over trees.
 
-- ``SumOfOptimalTrees``: K árvores Newton **ótimas** de profundidade d ∈ {1,2,3}
-  ajustadas em sequência no resíduo, depois ``backfit_sweeps`` passadas de
-  reestimação conjunta das folhas (cada árvore contra a margem das outras).
-- ``FIGSClassifier``: Tan et al. (2022) em Newton/logit: a cada passo, o
-  melhor corte em qualquer folha de qualquer árvore, ou a raiz de uma árvore
-  nova, contra a margem das outras árvores; para em ``max_splits`` cortes.
+- ``SumOfOptimalTrees``: K **optimal** Newton trees of depth d in {1, 2, 3}
+  fitted in sequence on the residual, then ``backfit_sweeps`` passes of joint
+  leaf re-estimation (each tree against the margin of the others).
+- ``FIGSClassifier``: Tan et al. (2022) with Newton/logit leaves: at each step,
+  the best cut in any leaf of any tree, or the root of a new tree, against the
+  margin of the other trees; stops at ``max_splits`` cuts.
 """
 
 from dataclasses import dataclass, field
@@ -50,7 +50,7 @@ class SmallTree:
     value: np.ndarray = field(default_factory=lambda: np.zeros(1))
 
     def split(self, node, f, t):
-        """Transforme a folha ``node`` em corte; os filhos herdam o valor dela."""
+        """Turn leaf ``node`` into a cut; the children inherit its value."""
         k = len(self.feature)
         self.feature += [-1, -1]
         self.threshold += [-1, -1]
@@ -78,7 +78,7 @@ class SmallTree:
 
     @classmethod
     def from_nested(cls, nested):
-        """(f, t, esq, dir) aninhado, None = folha."""
+        """Build from nested (f, t, left, right) tuples; None = leaf."""
         tree = cls()
 
         def grow(node, spec):
@@ -92,7 +92,7 @@ class SmallTree:
         return tree
 
     def rules(self, edges, names=None, nan_features=None):
-        """Folhas como (condições em intervalos por feature, valor); ver ``explain``."""
+        """Leaves as (per-feature interval conditions, value); see ``explain``."""
         return leaf_rules(self, edges, names, nan_features)
 
 
@@ -101,16 +101,16 @@ def _side(f, t):
 
 
 def _d2_nested(s):
-    """Lado d2 (f2, t2, fl, tl, fr, tr) → aninhado."""
+    """Depth-2 side (f2, t2, fl, tl, fr, tr) -> nested tuple."""
     if s[0] < 0:
         return None
     return (int(s[0]), int(s[1]), _side(s[2], s[3]), _side(s[4], s[5]))
 
 
 def optimal_tree(Xb, g, h, w, nb, depth, lam, min_weight, features=None):
-    """Árvore Newton ótima de profundidade 1–3 (sem valores); None se nada ganha.
+    """Optimal Newton tree of depth 1-3 (without values); None if no cut gains.
 
-    ``features`` restringe a busca (obrigatório na prática para d3 com p grande).
+    ``features`` restricts the search (needed in practice for depth 3 with large p).
     """
     feats = np.arange(Xb.shape[1]) if features is None else np.asarray(features, dtype=np.int64)
     Xs = np.ascontiguousarray(Xb[:, feats])
@@ -141,8 +141,8 @@ def optimal_tree(Xb, g, h, w, nb, depth, lam, min_weight, features=None):
 
 
 def greedy_tree(Xb, g, h, w, nb, depth, lam, min_weight, features=None):
-    """Controle guloso de ``optimal_tree``: melhor corte único na raiz, depois em
-    cada filho (mesmo ganho Newton, mesmos bins); None se nada ganha."""
+    """Greedy control for ``optimal_tree``: best single cut at the root, then in
+    each child (same Newton gain, same bins); None if no cut gains."""
     feats = np.arange(Xb.shape[1]) if features is None else np.asarray(features, dtype=np.int64)
     Xs = np.ascontiguousarray(Xb[:, feats])
     nbs = np.ascontiguousarray(nb[feats])
@@ -165,7 +165,7 @@ def greedy_tree(Xb, g, h, w, nb, depth, lam, min_weight, features=None):
 
 
 class _AdditiveTrees(InterpretableSumMixin, ClassifierMixin, BaseEstimator):
-    """Base: bins, margem, backfitting e previsão de uma soma de SmallTree."""
+    """Base class: binning, margin, backfitting and prediction for a sum of SmallTree."""
 
     def _prepare(self, X, y, sample_weight, y_soft):
         X, classes, target, w = fit_inputs(self, X, y, sample_weight, y_soft)
@@ -174,11 +174,11 @@ class _AdditiveTrees(InterpretableSumMixin, ClassifierMixin, BaseEstimator):
         return X, Xb, nb, target, w
 
     def _newton_step(self, tree, Xb, target, margin, contrib, w):
-        """Passo de Newton incremental nas folhas de ``tree`` a partir dos valores atuais.
+        """Incremental Newton step on the leaves of ``tree``, from the current values.
 
-        ``margin`` inclui a contribuição atual da árvore; devolve (nova
-        contribuição, nova margem). Partir do valor atual (e não de zero) é o
-        que mantém o backfitting estável com árvores quase colineares.
+        ``margin`` includes the tree's current contribution; returns (new
+        contribution, new margin). Starting from the current values (not from
+        zero) keeps backfitting stable when trees are nearly collinear.
         """
         g, h = grad_hess(target, margin, w)
         ids = tree.leaf_ids(Xb)
@@ -196,7 +196,7 @@ class _AdditiveTrees(InterpretableSumMixin, ClassifierMixin, BaseEstimator):
         return margin
 
     def decision_function(self, X):
-        """Logit de ``P(y = classes_[1])``: base + soma das árvores."""
+        """Logit of ``P(y = classes_[1])``: base plus the sum of the trees."""
         Xb = rebin(predict_input(self, X, "trees_"), self.bin_edges_)
         m = np.full(len(Xb), self.base_margin_)
         for tree in self.trees_:
@@ -205,54 +205,55 @@ class _AdditiveTrees(InterpretableSumMixin, ClassifierMixin, BaseEstimator):
 
 
 class SumOfOptimalTrees(_AdditiveTrees):
-    """Soma em logit de poucas árvores Newton ótimas: o modelo de orçamento fixo.
+    """Logit sum of a few optimal Newton trees: the fixed-budget model.
 
-    ``logit(p) = base + Σ_k árvore_k(x)``. Cada árvore de profundidade
-    ``depth`` é a ótima (busca exaustiva nos bins) no resíduo das anteriores;
-    depois, ``backfit_sweeps`` passadas reestimam as folhas de todas juntas.
-    Orçamento: ``n_trees · (2^depth − 1) + extra_stumps`` cortes (ex.: 16 cortes
-    = 5 árvores d2 + 1 toco).
+    ``logit(p) = base + Σ_k tree_k(x)``. Each tree of depth ``depth`` is the
+    optimal one (exhaustive search over bins) on the residual of the previous
+    trees; then ``backfit_sweeps`` passes re-estimate all leaves jointly.
+    Budget: ``n_trees * (2**depth - 1) + extra_stumps`` cuts (e.g. 16 cuts =
+    5 depth-2 trees + 1 stump).
 
     Parameters
     ----------
     n_trees : int, default=2
-        Número de árvores de profundidade ``depth``.
+        Number of trees of depth ``depth``.
     depth : {1, 2, 3}, default=2
-        Profundidade das árvores.
+        Depth of the trees.
     learning_rate : float or "auto", default="auto"
-        Shrinkage dos passos de Newton nas folhas (1 = passo inteiro). "auto" =
-        1 / (1 + 0,1 · n_trees), a mediana do tuning no benchmark (0,9 com uma
-        árvore, 0,3 com 21).
+        Shrinkage of the Newton steps on the leaves (1 = full step). "auto" =
+        1 / (1 + 0.1 * n_trees), the median of the benchmark tuning (0.9 with
+        one tree, 0.3 with 21).
     lam : float, default=2.0
-        Regularização L2 das folhas (no ganho e no passo de Newton).
+        L2 regularization of the leaves (in the gain and the Newton step).
     min_weight : float, default=20.0
-        Massa (hessiana) mínima por folha.
+        Minimum hessian mass per leaf.
     max_bins : int, default=16
-        Bins por feature.
+        Bins per feature.
     backfit_sweeps : int, default=2
-        Passadas de reestimação conjunta das folhas.
+        Passes of joint leaf re-estimation.
     max_features_d3, max_features_d2 : int, default=24, 128
-        Com mais features, a busca fica restrita às de maior importância
-        (ótima dentro desse conjunto).
+        With more features, the search is restricted to the most important ones
+        (optimal within that set).
     feature_screen : {"lgbm", "fast"}, default="lgbm"
-        Triagem: importância de ganho do LightGBM (uma vez) ou FAST por rodada.
+        Screening: LightGBM gain importance (computed once; falls back to "fast"
+        without LightGBM) or FAST scores recomputed every round.
     search : {"optimal", "greedy"}, default="optimal"
-        ``"greedy"`` cresce cada árvore pelo melhor corte único (controle).
+        ``"greedy"`` grows each tree by the best single cut (the control).
     extra_stumps : int, default=0
-        Tocos (d1) somados depois das árvores, para fechar o orçamento.
+        Stumps (depth 1) added after the trees, to fill the budget.
 
     Attributes
     ----------
     trees_ : list of SmallTree
-        As árvores, com cortes em bins; ``get_trees()`` dá os valores reais.
+        The trees, with cuts in bins; ``get_trees()`` gives real thresholds.
     base_margin_ : float
-        Logit constante inicial.
+        Initial constant logit.
     classes_, n_features_in_, feature_names_in_, bin_edges_, nan_features_
-        Convenções do sklearn e dos bins.
+        scikit-learn and binning conventions.
 
-    Métodos de interpretação: ``explain``, ``rules``, ``to_dict``,
+    Interpretation methods: ``explain``, ``rules``, ``to_dict``,
     ``get_trees``, ``export_text``, ``predict_contributions``,
-    ``plot_contributions``, ``plot_shapes``.
+    ``plot_contributions``, ``plot_shapes``, ``to_shap_model``.
     """
 
     def __init__(self, *, n_trees=2, depth=2, learning_rate="auto", lam=2.0,
@@ -273,20 +274,20 @@ class SumOfOptimalTrees(_AdditiveTrees):
         self.extra_stumps = extra_stumps
 
     def fit(self, X, y, sample_weight=None, y_soft=None):
-        """Ajusta a soma.
+        """Fit the sum.
 
         Parameters
         ----------
-        X : array-like ou DataFrame, shape (n, p)
-            Features numéricas; NaN é aceito (vai sempre para o lado ``<=``).
-            Com DataFrame, os nomes das colunas viram ``feature_names_in_``.
-        y : array-like, shape (n,)
-            Rótulos de duas classes.
-        sample_weight : array-like, shape (n,), opcional
-            Pesos não negativos das linhas.
-        y_soft : array-like, shape (n,), opcional
-            Alvo suave em [0, 1] (ex.: probabilidade de um professor) no lugar
-            de y; ``classes_`` continua vindo de y.
+        X : array-like or DataFrame of shape (n_samples, n_features)
+            Numeric features; NaN is accepted (it always goes to the ``<=`` side).
+            With a DataFrame, the column names become ``feature_names_in_``.
+        y : array-like of shape (n_samples,)
+            Labels of two classes.
+        sample_weight : array-like of shape (n_samples,), optional
+            Non-negative row weights.
+        y_soft : array-like of shape (n_samples,), optional
+            Soft target in [0, 1] (e.g. a teacher's probability) used instead
+            of y; ``classes_`` still comes from y.
 
         Returns
         -------
@@ -307,7 +308,7 @@ class SumOfOptimalTrees(_AdditiveTrees):
                  if self.feature_screen == "lgbm" and self.depth >= 2 else None)
         for depth in [self.depth] * self.n_trees + [1] * self.extra_stumps:
             g, h = grad_hess(target, margin, w)
-            if depth == 1:  # toco: busca completa é barata e ótimo = guloso
+            if depth == 1:  # stump: full search is cheap and optimal = greedy
                 feats = None
             else:
                 feats = fixed if self.feature_screen == "lgbm" else top_features(
@@ -325,43 +326,43 @@ class SumOfOptimalTrees(_AdditiveTrees):
 
 
 class FIGSClassifier(_AdditiveTrees):
-    """FIGS (Tan et al., 2022) em logit: até ``max_splits`` cortes entre árvores
-    que crescem juntas.
+    """FIGS (Tan et al., 2022) in logit space: up to ``max_splits`` cuts shared by
+    trees that grow together.
 
-    A cada passo, o melhor corte (ganho Newton) em qualquer folha de qualquer
-    árvore, ou a raiz de uma árvore nova, contra a margem das outras árvores;
-    as folhas são reestimadas por backfitting. O número e a forma das árvores
-    saem dos dados; o orçamento é o total de cortes.
+    At each step, the best cut (Newton gain) in any leaf of any tree, or the
+    root of a new tree, against the margin of the other trees; leaves are then
+    re-estimated by backfitting. The number and shape of the trees come from
+    the data; the budget is the total number of cuts.
 
     Parameters
     ----------
     max_splits : int, default=16
-        Total de cortes (pode parar antes se nenhum corte tem ganho).
-    max_trees : int ou None, default=None
-        Limite de árvores.
+        Total number of cuts (may stop earlier if no cut has a positive gain).
+    max_trees : int or None, default=None
+        Maximum number of trees.
     lam : float or "auto", default="auto"
-        Regularização L2 das folhas (no ganho e no passo de Newton). "auto" =
-        2 · max_splits: o λ escolhido pelo tuning cresce com o orçamento (≈ 5 com
-        4 cortes, ≈ 300 com 64); sem isso, orçamentos grandes sobreajustam.
+        L2 regularization of the leaves (in the gain and the Newton step).
+        "auto" = 2 * max_splits: the tuned lambda grows with the budget (about 5
+        with 4 cuts, about 300 with 64); without it, large budgets overfit.
     min_weight : float, default=20.0
-        Massa (hessiana) mínima por folha.
+        Minimum hessian mass per leaf.
     max_bins : int, default=32
-        Bins por feature.
+        Bins per feature.
     backfit_sweeps : int, default=1
-        Passadas de reestimação das folhas após cada corte.
+        Passes of leaf re-estimation after each cut.
 
     Attributes
     ----------
     trees_ : list of SmallTree
-        As árvores, com cortes em bins; ``get_trees()`` dá os valores reais.
+        The trees, with cuts in bins; ``get_trees()`` gives real thresholds.
     base_margin_ : float
-        Logit constante inicial.
+        Initial constant logit.
     classes_, n_features_in_, feature_names_in_, bin_edges_, nan_features_
-        Convenções do sklearn e dos bins.
+        scikit-learn and binning conventions.
 
-    Métodos de interpretação: ``explain``, ``rules``, ``to_dict``,
+    Interpretation methods: ``explain``, ``rules``, ``to_dict``,
     ``get_trees``, ``export_text``, ``predict_contributions``,
-    ``plot_contributions``, ``plot_shapes``.
+    ``plot_contributions``, ``plot_shapes``, ``to_shap_model``.
     """
 
     def __init__(self, *, max_splits=16, max_trees=None, lam="auto", min_weight=20.0,
@@ -374,34 +375,34 @@ class FIGSClassifier(_AdditiveTrees):
         self.backfit_sweeps = backfit_sweeps
 
     def fit(self, X, y, sample_weight=None, y_soft=None):
-        """Ajusta a soma.
+        """Fit the sum.
 
         Parameters
         ----------
-        X : array-like ou DataFrame, shape (n, p)
-            Features numéricas; NaN é aceito (vai sempre para o lado ``<=``).
-            Com DataFrame, os nomes das colunas viram ``feature_names_in_``.
-        y : array-like, shape (n,)
-            Rótulos de duas classes.
-        sample_weight : array-like, shape (n,), opcional
-            Pesos não negativos das linhas.
-        y_soft : array-like, shape (n,), opcional
-            Alvo suave em [0, 1] (ex.: probabilidade de um professor) no lugar
-            de y; ``classes_`` continua vindo de y.
+        X : array-like or DataFrame of shape (n_samples, n_features)
+            Numeric features; NaN is accepted (it always goes to the ``<=`` side).
+            With a DataFrame, the column names become ``feature_names_in_``.
+        y : array-like of shape (n_samples,)
+            Labels of two classes.
+        sample_weight : array-like of shape (n_samples,), optional
+            Non-negative row weights.
+        y_soft : array-like of shape (n_samples,), optional
+            Soft target in [0, 1] (e.g. a teacher's probability) used instead
+            of y; ``classes_`` still comes from y.
 
         Returns
         -------
         self
         """
         self.lam_ = 2.0 * self.max_splits if self.lam == "auto" else float(self.lam)
-        self.learning_rate_ = 1.0  # FIGS não encolhe: cada folha é o passo de Newton inteiro
+        self.learning_rate_ = 1.0  # FIGS does not shrink: each leaf takes the full Newton step
         _, Xb, nb, target, w = self._prepare(X, y, sample_weight, y_soft)
         self.base_margin_ = base_margin(target, w)
         n, B = len(Xb), int(nb.max())
         trees, contribs = [], []
         margin = np.full(n, self.base_margin_)
         for _ in range(self.max_splits):
-            best = (0.0, None, None, None, None)  # ganho, árvore, nó, f, t
+            best = (0.0, None, None, None, None)  # gain, tree, node, feature, threshold
             can_add = self.max_trees is None or len(trees) < self.max_trees
             candidates = list(range(len(trees))) + ([None] if can_add else [])
             for k in candidates:
@@ -436,27 +437,28 @@ class FIGSClassifier(_AdditiveTrees):
 
 
 class BoostedOptimalTrees(_AdditiveTrees):
-    """Boosting de árvores Newton ótimas de profundidade 1–3, com early stopping.
+    """Boosting of optimal Newton trees of depth 1-3, with early stopping.
 
-    Generaliza ``AdditiveTreeBooster`` (d1/d2) para d3: a cada rodada, a
-    árvore ótima de profundidade ``depth`` no resíduo (em d3, restrita às
-    ``max_features_d3`` features de maior importância), folhas por passo de
-    Newton × ``learning_rate``. Para quando a log-loss da validação interna
-    (``validation_fraction``) não melhora em ``patience`` rodadas e mantém as
-    árvores até o melhor ponto. Parâmetros como em ``AdditiveTreeBooster``.
+    Extends ``AdditiveTreeBooster`` (depth 1/2) to depth 3: every round fits the
+    optimal tree of depth ``depth`` on the residual (at depth 3, restricted to
+    the ``max_features_d3`` most important features), with leaves set by a
+    Newton step times ``learning_rate``. Stops when the internal validation
+    log-loss (``validation_fraction``) has not improved for ``patience`` rounds
+    and keeps the trees up to the best round. Parameters as in
+    ``AdditiveTreeBooster``.
 
     Attributes
     ----------
     trees_ : list of SmallTree
-        As árvores, com cortes em bins; ``get_trees()`` dá os valores reais.
+        The trees, with cuts in bins; ``get_trees()`` gives real thresholds.
     base_margin_ : float
-        Logit constante inicial.
+        Initial constant logit.
     classes_, n_features_in_, feature_names_in_, bin_edges_, nan_features_
-        Convenções do sklearn e dos bins.
+        scikit-learn and binning conventions.
 
-    Métodos de interpretação: ``explain``, ``rules``, ``to_dict``,
+    Interpretation methods: ``explain``, ``rules``, ``to_dict``,
     ``get_trees``, ``export_text``, ``predict_contributions``,
-    ``plot_contributions``, ``plot_shapes``.
+    ``plot_contributions``, ``plot_shapes``, ``to_shap_model``.
     """
 
     def __init__(self, *, depth=3, learning_rate=0.1, max_rounds=300, patience=30, lam=1.0,
@@ -477,20 +479,20 @@ class BoostedOptimalTrees(_AdditiveTrees):
         self.random_state = random_state
 
     def fit(self, X, y, sample_weight=None, y_soft=None):
-        """Ajusta a soma.
+        """Fit the sum.
 
         Parameters
         ----------
-        X : array-like ou DataFrame, shape (n, p)
-            Features numéricas; NaN é aceito (vai sempre para o lado ``<=``).
-            Com DataFrame, os nomes das colunas viram ``feature_names_in_``.
-        y : array-like, shape (n,)
-            Rótulos de duas classes.
-        sample_weight : array-like, shape (n,), opcional
-            Pesos não negativos das linhas.
-        y_soft : array-like, shape (n,), opcional
-            Alvo suave em [0, 1] (ex.: probabilidade de um professor) no lugar
-            de y; ``classes_`` continua vindo de y.
+        X : array-like or DataFrame of shape (n_samples, n_features)
+            Numeric features; NaN is accepted (it always goes to the ``<=`` side).
+            With a DataFrame, the column names become ``feature_names_in_``.
+        y : array-like of shape (n_samples,)
+            Labels of two classes.
+        sample_weight : array-like of shape (n_samples,), optional
+            Non-negative row weights.
+        y_soft : array-like of shape (n_samples,), optional
+            Soft target in [0, 1] (e.g. a teacher's probability) used instead
+            of y; ``classes_`` still comes from y.
 
         Returns
         -------
