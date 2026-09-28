@@ -108,7 +108,7 @@ bettertrees stands on these ideas; what we took from each:
 
 | work | what bettertrees borrows |
 |---|---|
-| **FIGS** — Tan, Singh, Nasseri, Agarwal, Yu. "Fast Interpretable Greedy-Tree Sums." arXiv:2201.11931 (2022); [imodels](https://github.com/csinva/imodels) | The sum-of-trees model that grows several trees at once, one cut at a time. `FIGSClassifier` re-implements it with Newton/logit leaves and backfitting. |
+| **FIGS** — Tan, Singh, Nasseri, Agarwal, et al. "Fast Interpretable Greedy-Tree Sums." arXiv:2201.11931 (2022); [imodels](https://github.com/csinva/imodels) | The sum-of-trees model that grows several trees at once, one cut at a time. `FIGSClassifier` re-implements it with Newton/logit leaves and backfitting. |
 | **Hierarchical Shrinkage** — Agarwal, Tan, Ronen, Singh, Yu. *ICML* (2022) | Leaf values shrunk toward their ancestors; the leaf model of the single tree and of its CV. |
 | **XGBoost** — Chen, Guestrin. *KDD* (2016) | The second-order (Newton) gain `G²/(H+λ)` and leaf value `-G/(H+λ)` used by every sum. |
 | **LightGBM** — Ke et al. *NeurIPS* (2017); scikit-learn's HistGradientBoosting | Quantile histograms (≤ 255 bins, missing values in their own bin), the (optional) histogram subtraction trick and best-first, leaf-wise growth. |
