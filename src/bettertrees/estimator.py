@@ -9,6 +9,7 @@ from numbers import Integral, Real
 from time import perf_counter
 
 import numpy as np
+from numba import config as numba_config
 from numba import get_num_threads, set_num_threads
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.utils.validation import check_is_fitted, check_random_state
@@ -300,7 +301,8 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         """
         self._validate_parameters()
         previous_threads = get_num_threads()
-        set_num_threads(int(self.n_jobs))
+        # n_jobs above the machine's cores is clamped (Numba refuses more threads)
+        set_num_threads(min(int(self.n_jobs), numba_config.NUMBA_NUM_THREADS))
         try:
             return self._fit_impl(X, y, sample_weight)
         finally:

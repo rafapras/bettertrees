@@ -1071,3 +1071,12 @@ def test_monotonic_cst_contract_rejects_multiclass_and_bad_directions():
 def test_invalid_parameters(params):
     with pytest.raises(ValueError):
         FastDecisionTreeClassifier(**params).fit([[0], [1]], [0, 1])
+
+
+def test_n_jobs_above_available_cores_is_clamped():
+    from numba import config
+    X = np.random.default_rng(0).normal(size=(300, 4))
+    y = (X[:, 0] > 0).astype(int)
+    model = FastDecisionTreeClassifier(n_jobs=config.NUMBA_NUM_THREADS + 7, max_depth=3)
+    reference = FastDecisionTreeClassifier(n_jobs=1, max_depth=3).fit(X, y)
+    np.testing.assert_array_equal(model.fit(X, y).predict_proba(X), reference.predict_proba(X))
