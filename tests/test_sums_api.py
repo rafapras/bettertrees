@@ -10,19 +10,29 @@ from sklearn.utils.estimator_checks import parametrize_with_checks
 
 from bettertrees.sums import (
     AdditiveTreeBooster,
+    BaggedFIGSClassifier,
     BoostedOptimalTrees,
+    CompactTreeBooster,
     FIGSClassifier,
+    RashomonFIGSClassifier,
     SumOfOptimalTrees,
 )
 
 matplotlib.use("Agg")
 
 ESTIMATORS = [SumOfOptimalTrees(), FIGSClassifier(), AdditiveTreeBooster(max_rounds=20),
-              BoostedOptimalTrees(depth=2, max_rounds=20)]
+              BoostedOptimalTrees(depth=2, max_rounds=20),
+              BaggedFIGSClassifier(max_splits=8, n_bags=4, distill=True),
+              RashomonFIGSClassifier(max_splits=8, n_mutations=5),
+              CompactTreeBooster(max_splits=12)]
 
 
 def _expected_failures(est):
-    if isinstance(est, AdditiveTreeBooster | BoostedOptimalTrees):
+    if isinstance(est, BaggedFIGSClassifier | RashomonFIGSClassifier):
+        # bootstrap replicates and the validation split both draw ROWS
+        return {"check_sample_weight_equivalence_on_dense_data":
+                "row-based resampling is not invariant to repetition"}
+    if isinstance(est, AdditiveTreeBooster | BoostedOptimalTrees | CompactTreeBooster):
         # early stopping draws 15% of the ROWS for validation: repeating a row
         # is not the same as weight 2 (the repeated row may land on both sides)
         return {"check_sample_weight_equivalence_on_dense_data":
@@ -48,6 +58,11 @@ MODELS = [
     lambda: SumOfOptimalTrees(n_trees=3, depth=2, extra_stumps=2, learning_rate=0.5),
     lambda: SumOfOptimalTrees(n_trees=3, depth=2, search="greedy"),
     lambda: FIGSClassifier(max_splits=8),
+    lambda: FIGSClassifier(max_splits=8, learning_rate=0.3),
+    lambda: BaggedFIGSClassifier(max_splits=8, n_bags=5),
+    lambda: RashomonFIGSClassifier(max_splits=8, n_mutations=10),
+    lambda: CompactTreeBooster(max_splits=16),
+    lambda: CompactTreeBooster(max_splits=16, depth=1, refit=False),
     lambda: AdditiveTreeBooster(max_rounds=10),
     lambda: BoostedOptimalTrees(depth=3, max_rounds=10),
 ]

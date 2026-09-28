@@ -38,6 +38,7 @@ from ._kernels import (
     node_hist,
     small_tree_leaf_ids,
 )
+from .edit import TreeEditMixin
 from .explain import InterpretableSumMixin, leaf_rules
 
 
@@ -164,7 +165,7 @@ def greedy_tree(Xb, g, h, w, nb, depth, lam, min_weight, features=None):
     return None if spec is None else SmallTree.from_nested(spec)
 
 
-class _AdditiveTrees(InterpretableSumMixin, ClassifierMixin, BaseEstimator):
+class _AdditiveTrees(TreeEditMixin, InterpretableSumMixin, ClassifierMixin, BaseEstimator):
     """Base class: binning, margin, backfitting and prediction for a sum of SmallTree."""
 
     def _prepare(self, X, y, sample_weight, y_soft):
@@ -350,6 +351,10 @@ class FIGSClassifier(_AdditiveTrees):
         Bins per feature.
     backfit_sweeps : int, default=1
         Passes of leaf re-estimation after each cut.
+    learning_rate : float, default=1.0
+        Shrinkage of every Newton step on the leaves (1 = the full step of the
+        original FIGS). Below 1 it regularizes large budgets on small data,
+        where full steps overfit.
 
     Attributes
     ----------
@@ -366,13 +371,14 @@ class FIGSClassifier(_AdditiveTrees):
     """
 
     def __init__(self, *, max_splits=16, max_trees=None, lam="auto", min_weight=20.0,
-                 max_bins=32, backfit_sweeps=1):
+                 max_bins=32, backfit_sweeps=1, learning_rate=1.0):
         self.max_splits = max_splits
         self.max_trees = max_trees
         self.lam = lam
         self.min_weight = min_weight
         self.max_bins = max_bins
         self.backfit_sweeps = backfit_sweeps
+        self.learning_rate = learning_rate
 
     def fit(self, X, y, sample_weight=None, y_soft=None):
         """Fit the sum.
@@ -395,45 +401,51 @@ class FIGSClassifier(_AdditiveTrees):
         self
         """
         self.lam_ = 2.0 * self.max_splits if self.lam == "auto" else float(self.lam)
-        self.learning_rate_ = 1.0  # FIGS does not shrink: each leaf takes the full Newton step
+        self.learning_rate_ = float(self.learning_rate)
         _, Xb, nb, target, w = self._prepare(X, y, sample_weight, y_soft)
         self.base_margin_ = base_margin(target, w)
-        n, B = len(Xb), int(nb.max())
-        trees, contribs = [], []
-        margin = np.full(n, self.base_margin_)
-        for _ in range(self.max_splits):
-            best = (0.0, None, None, None, None)  # gain, tree, node, feature, threshold
-            can_add = self.max_trees is None or len(trees) < self.max_trees
-            candidates = list(range(len(trees))) + ([None] if can_add else [])
-            for k in candidates:
-                if k is None:
-                    g, h = grad_hess(target, margin, w)
-                    ids = np.zeros(n, dtype=np.int64)
-                    leaves, n_nodes = [0], 1
-                else:
-                    g, h = grad_hess(target, margin - contribs[k], w)
-                    ids = trees[k].leaf_ids(Xb)
-                    leaves, n_nodes = trees[k].leaves, len(trees[k].feature)
-                hist = node_hist(Xb, g, h, w, ids, n_nodes, B)
-                for leaf in leaves:
-                    gains, cuts = best_cut_1d(hist[leaf], nb, self.lam_, self.min_weight)
-                    f = int(np.argmax(gains))
-                    if gains[f] > best[0]:
-                        best = (float(gains[f]), k, leaf, f, int(cuts[f]))
-            _, k, leaf, f, t = best
-            if k is None and leaf is None:
-                break
-            if k is None:
-                trees.append(SmallTree())
-                contribs.append(np.zeros(n))
-                k = len(trees) - 1
-            trees[k].split(leaf, f, t)
-            contribs[k], margin = self._newton_step(trees[k], Xb, target, margin,
-                                                    contribs[k], w)
-            if self.backfit_sweeps:
-                margin = self._backfit(trees, contribs, Xb, target, w, self.backfit_sweeps)
-        self.trees_ = trees
+        self.trees_ = grow_figs(self, Xb, nb, target, w, self.max_splits, self.max_trees)
         return self
+
+
+def grow_figs(est, Xb, nb, target, w, max_splits, max_trees=None):
+    """FIGS growth on binned data (shared by ``FIGSClassifier`` and its bagged
+    and Rashomon variants). ``est`` provides ``base_margin_``, ``lam_``,
+    ``learning_rate_``, ``min_weight`` and ``backfit_sweeps``; returns the trees."""
+    n, B = len(Xb), int(nb.max())
+    trees, contribs = [], []
+    margin = np.full(n, est.base_margin_)
+    for _ in range(max_splits):
+        best = (0.0, None, None, None, None)  # gain, tree, node, feature, threshold
+        can_add = max_trees is None or len(trees) < max_trees
+        candidates = list(range(len(trees))) + ([None] if can_add else [])
+        for k in candidates:
+            if k is None:
+                g, h = grad_hess(target, margin, w)
+                ids = np.zeros(n, dtype=np.int64)
+                leaves, n_nodes = [0], 1
+            else:
+                g, h = grad_hess(target, margin - contribs[k], w)
+                ids = trees[k].leaf_ids(Xb)
+                leaves, n_nodes = trees[k].leaves, len(trees[k].feature)
+            hist = node_hist(Xb, g, h, w, ids, n_nodes, B)
+            for leaf in leaves:
+                gains, cuts = best_cut_1d(hist[leaf], nb, est.lam_, est.min_weight)
+                f = int(np.argmax(gains))
+                if gains[f] > best[0]:
+                    best = (float(gains[f]), k, leaf, f, int(cuts[f]))
+        _, k, leaf, f, t = best
+        if k is None and leaf is None:
+            break
+        if k is None:
+            trees.append(SmallTree())
+            contribs.append(np.zeros(n))
+            k = len(trees) - 1
+        trees[k].split(leaf, f, t)
+        contribs[k], margin = est._newton_step(trees[k], Xb, target, margin, contribs[k], w)
+        if est.backfit_sweeps:
+            margin = est._backfit(trees, contribs, Xb, target, w, est.backfit_sweeps)
+    return trees
 
 
 class BoostedOptimalTrees(_AdditiveTrees):

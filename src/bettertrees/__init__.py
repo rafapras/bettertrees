@@ -4,6 +4,8 @@
   (exact and histogram engines), with leaf count and shrinkage chosen by CV.
 - ``SumOfOptimalTrees``: a logit sum of a few Newton-optimal trees (depth 1-3).
 - ``FIGSClassifier``: FIGS (Tan et al., 2022) in logit space.
+- ``BaggedFIGSClassifier``, ``RashomonFIGSClassifier``: FIGS with a bagged or
+  Rashomon structure selection (medium budgets).
 - ``AdditiveTreeBooster``: a long sum of optimal depth-1/2 trees with early stopping.
 
 The sums expose ``rules()``, ``explain()``, ``to_dict()``,
@@ -14,10 +16,17 @@ The sums expose ``rules()``, ``explain()``, ``to_dict()``,
 from .autotune import FastDecisionTreeClassifierCV
 from .estimator import FastDecisionTreeClassifier
 from .multilevel import fit_multilevel_tree
-from .sums import AdditiveTreeBooster, FIGSClassifier, SumOfOptimalTrees
+from .sums import (
+                   AdditiveTreeBooster,
+                   BaggedFIGSClassifier,
+                   CompactTreeBooster,
+                   FIGSClassifier,
+                   RashomonFIGSClassifier,
+                   SumOfOptimalTrees,
+)
 
 __version__ = "0.1.0.dev0"
 
-__all__ = ["AdditiveTreeBooster", "FIGSClassifier", "FastDecisionTreeClassifier",
-           "FastDecisionTreeClassifierCV", "SumOfOptimalTrees", "__version__",
-           "fit_multilevel_tree"]
+__all__ = ["AdditiveTreeBooster", "BaggedFIGSClassifier", "CompactTreeBooster", "FIGSClassifier",
+           "FastDecisionTreeClassifier", "FastDecisionTreeClassifierCV", "RashomonFIGSClassifier",
+           "SumOfOptimalTrees", "__version__", "fit_multilevel_tree"]
