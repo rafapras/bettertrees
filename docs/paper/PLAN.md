@@ -134,3 +134,8 @@ data, 0 elsewhere), depth-3 optimal trees (slow, no gain over d2).
   min_child_samples), family selection by inner CV beats XGBoost with <= b cuts
   at every budget up to 128 (-0.29 % at 128, 11/5, p = 0.021, 16 datasets) and
   LightGBM up to 64; at 128 it ties LightGBM (+0.02 %, 7/9).
+- No tuning at all (rule by budget: FIGS full step up to 8 cuts, FIGS with
+  learning rate 0.3 up to 64, CompactTreeBooster above): vs the Optuna-tuned
+  shape-free LightGBM, -1.0 / -0.8 / -1.0 / -0.5 % at 4/8/16/32 cuts
+  (p <= 0.002), tie at 64 and 128, at 0.03-0.6x its total time; same picture vs
+  XGBoost. (Rule chosen on split (0,0) of the same datasets: a mild selection bias.)

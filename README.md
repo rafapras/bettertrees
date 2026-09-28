@@ -118,7 +118,8 @@ dataset, Wilcoxon test. Log-loss change is relative, AUC change in points.
 | FIGS vs rpart (R, cost-complexity pruning) and one LightGBM tree (4 / 8 / 16 cuts) | rpart: −3.9% / −5.5% / −4.5%; LightGBM tree: −2.4% / −3.2% / −3.5% (19–20 wins of 20) |
 | Our FIGS (logit, backfitting) vs FIGS from imodels (4 / 8 / 16 cuts) | −0.5% / −2.5% / −4.4% log-loss (15–17 wins of 20) |
 | Family chosen by inner CV (FIGS with learning rate / backfitting, compact booster, sum of d2) vs LightGBM with ≤ b cuts, shape tuned (4 / 8 / 16 / 32 / 64 / 128 cuts; eligible budgets, 19 datasets) | −1.4% / −1.0% / −0.9% / −0.4% / −0.4% log-loss (p ≤ 0.005), tie at 128 (+0.02%, 7/8) |
-| The same vs XGBoost with ≤ b cuts, shape tuned | −1.4% / −1.1% / −0.8% / −0.5% / −0.7% (p ≤ 0.005); −0.2% at 128 (10/5, p = 0.12) |
+| No tuning (FIGS up to 64 cuts, CompactTreeBooster above) vs the same LightGBM, tuned | −1.0% / −0.8% / −1.0% / −0.5% at 4 / 8 / 16 / 32 cuts (p ≤ 0.002), tie at 64–128, at 0.03–0.6× its total time |
+| The same vs XGBoost with ≤ b cuts, shape tuned | −1.4% / −1.1% / −0.8% / −0.5% / −0.5% (p ≤ 0.01); −0.3% at 128 (11/5, p = 0.02) |
 | Optimal vs greedy search inside the same sum (16 / 32 / 64 cuts) | −0.2% / −0.3% / −0.5% log-loss (p < 0.01) |
 | Additive booster (free capacity) vs tuned LightGBM / XGBoost / CatBoost | median +1.2% / +0.7% / +1.1% log-loss, −0.2 AUC points, 15–50× faster including tuning |
 | Single-tree engine vs scikit-learn (same depth) | 3.0× faster (hist) and 2.9× (exact) for n ≥ 10k; for n ≤ 3k use `splitter="exact"` (1.7×) |
