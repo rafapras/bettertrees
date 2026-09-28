@@ -882,7 +882,7 @@ def test_precision_objective_requires_explicit_class_and_off_search():
         FastDecisionTreeClassifier(
             objective="precision", search_stopping="off",
         ).fit(X, y)
-    with pytest.raises(ValueError, match="bound admissível"):
+    with pytest.raises(ValueError, match="admissible bound"):
         FastDecisionTreeClassifier(
             objective="precision", positive_class=1,
         ).fit(X, y)
@@ -896,7 +896,7 @@ def test_feature_names_are_recorded_and_checked_but_arrays_remain_accepted():
 
     np.testing.assert_array_equal(model.feature_names_in_, ["idade"])
     model.predict(np.asarray(X))
-    with pytest.raises(ValueError, match="nomes das features"):
+    with pytest.raises(ValueError, match="Feature names"):
         model.predict(pd.DataFrame({"renda": [0.0, 1.0]}))
 
     model.fit(np.asarray(X), [0, 0, 1, 1])
@@ -1053,11 +1053,11 @@ def test_monotonic_2d_random_fits_respect_finite_global_order(splitter):
 
 
 def test_monotonic_cst_contract_rejects_multiclass_and_bad_directions():
-    with pytest.raises(ValueError, match="classificação binária"):
+    with pytest.raises(ValueError, match="binary classification"):
         FastDecisionTreeClassifier(
             splitter="exact", search_stopping="off", monotonic_cst=[1],
         ).fit([[0], [1], [2]], [0, 1, 2])
-    with pytest.raises(ValueError, match="-1, 0 e 1"):
+    with pytest.raises(ValueError, match="-1, 0 and 1"):
         FastDecisionTreeClassifier(
             splitter="exact", search_stopping="off", monotonic_cst=[2],
         ).fit([[0], [1]], [0, 1])

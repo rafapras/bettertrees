@@ -66,9 +66,9 @@ def grow_tree_hist(X, X_binned, y, weights, edges, *, n_classes, max_depth,
     """
     X_binned = np.asarray(X_binned)
     if X_binned.shape != X.shape or X_binned.dtype != np.uint8:
-        raise ValueError("X_binned deve ter o mesmo shape de X e dtype uint8.")
+        raise ValueError("X_binned must have the same shape as X and dtype uint8.")
     if len(edges) != X.shape[1]:
-        raise ValueError("edges deve ter uma entrada por feature.")
+        raise ValueError("edges must have one entry per feature.")
     return _grow_tree(
         X, y, weights, n_classes=n_classes, max_depth=max_depth,
         min_samples_leaf=min_samples_leaf, max_leaf_nodes=max_leaf_nodes,
@@ -92,24 +92,24 @@ def _grow_tree(X, y, weights, *, n_classes, max_depth, min_samples_leaf,
     best-first por ``spec.growth_priority``, desempate pelo menor id de nó.
     """
     if stopping not in ("off", "bound"):
-        raise ValueError("stopping deve ser off ou bound.")
+        raise ValueError("stopping must be 'off' or 'bound'.")
     if reuse_parent_histograms and splitter != "hist":
-        raise ValueError("reuso pai-filho requer splitter='hist'.")
+        raise ValueError("Parent-child histogram reuse requires splitter='hist'.")
     if reuse_parent_histograms and max_leaf_nodes is not None:
-        raise ValueError("reuso pai-filho experimental requer max_leaf_nodes=None.")
+        raise ValueError("Parent-child histogram reuse (experimental) requires max_leaf_nodes=None.")
     if reuse_parent_histograms and objective != "gini":
-        raise ValueError("reuso pai-filho experimental requer objective='gini'.")
+        raise ValueError("Parent-child histogram reuse (experimental) requires objective='gini'.")
     if max_feature_repeats is not None and max_feature_repeats < 1:
-        raise ValueError("max_feature_repeats deve ser inteiro positivo ou None.")
+        raise ValueError("max_feature_repeats must be a positive integer or None.")
     spec = resolve_splitter_spec(splitter, objective, stopping)
     params = ObjectiveParams.from_values(positive_class, min_precision, min_support)
     X = np.asarray(X, dtype=np.float32)
     y = np.asarray(y, dtype=np.int32)
     weights = np.asarray(weights, dtype=np.float64)
     if len(X) != len(y) or len(y) != len(weights) or len(X) == 0:
-        raise ValueError("Dados de treino vazios ou desalinhados.")
+        raise ValueError("Training data is empty or misaligned.")
     if X.ndim != 2 or y.ndim != 1 or n_classes < 1:
-        raise ValueError("Shape inválido para o builder.")
+        raise ValueError("Invalid shape for the tree builder.")
     feature_order = np.ascontiguousarray(feature_order, dtype=np.int64)
     edge_layout = hist_edge_layout(edges) if splitter == "hist" else None
 
@@ -123,9 +123,9 @@ def _grow_tree(X, y, weights, *, n_classes, max_depth, min_samples_leaf,
     sample_indices = np.arange(active_rows, dtype=np.int64)
     root_mass = float(weights.sum())
     if root_mass <= 0:
-        raise ValueError("A massa total do treino precisa ser positiva.")
+        raise ValueError("The total training weight must be positive.")
     if reuse_parent_histograms and not np.all(weights == 1.0):
-        raise ValueError("reuso pai-filho experimental requer pesos unitários.")
+        raise ValueError("Parent-child histogram reuse (experimental) requires unit sample weights.")
     local_stats = stats if stats is not None else {}
     local_stats.setdefault("nodes_visited", 0)
     local_stats.setdefault("nodes_split", 0)
@@ -230,7 +230,7 @@ def _grow_tree(X, y, weights, *, n_classes, max_depth, min_samples_leaf,
         if mid <= start or mid >= end:
             # A valid split must produce two non-empty support groups. This is
             # a defensive guard against an inconsistent custom Split.
-            raise ValueError("Splitter produziu uma partição vazia.")
+            raise ValueError("The splitter produced an empty partition.")
         nodes.left[node_id] = next_node
         nodes.right[node_id] = next_node + 1
         nodes.feature[node_id] = split.feature

@@ -102,7 +102,7 @@ class RuleFitLasso(ClassifierMixin, BaseEstimator):
             Z = sparse.csr_matrix(np.where(flip, ~R, R).astype(np.float64) * scale)
             chosen = self._select_liblinear(Z, cost, yy)
         else:
-            raise ValueError("solver deve ser 'path' ou 'liblinear'.")
+            raise ValueError("solver must be 'path' or 'liblinear'.")
         self.models_ = {}
         for b, sel in chosen.items():
             if sel is None or not len(sel):

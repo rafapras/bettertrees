@@ -136,7 +136,7 @@ def optimal_tree(Xb, g, h, w, nb, depth, lam, min_weight, features=None):
         spec = (None if gains[f] <= 0 else
                 (f, int(res[f, 0]), _d2_nested(res[f, 1:7]), _d2_nested(res[f, 7:13])))
     else:
-        raise ValueError("depth deve ser 1, 2 ou 3.")
+        raise ValueError("depth must be 1, 2 or 3.")
     return None if spec is None else SmallTree.from_nested(remap(spec))
 
 
@@ -293,7 +293,7 @@ class SumOfOptimalTrees(_AdditiveTrees):
         self
         """
         if self.search not in ("optimal", "greedy"):
-            raise ValueError("search deve ser 'optimal' ou 'greedy'.")
+            raise ValueError("search must be 'optimal' or 'greedy'.")
         grow = optimal_tree if self.search == "optimal" else greedy_tree
         self.lam_ = float(self.lam)
         self.learning_rate_ = (1.0 / (1.0 + 0.1 * self.n_trees) if self.learning_rate == "auto"

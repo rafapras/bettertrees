@@ -164,8 +164,8 @@ def _solve_block_kernel(X_binned, y, weights, rows, edges, layout, n_classes,
         candidate_limit)
     if count < 0:
         raise ValueError(
-            f"Bloco depth 2 tem mais de {candidate_limit} cortes de raiz; "
-            "reduza max_bins/features ou aumente candidate_limit explicitamente.")
+            f"The depth-2 block has more than {candidate_limit} root cuts; "
+            "reduce max_bins/features or raise candidate_limit explicitly.")
     stats["root_candidates"] += int(count)
     stats["child_searches"] += 2 * int(count)
     stats["block_kernel_calls"] = stats.get("block_kernel_calls", 0) + 1
@@ -213,8 +213,8 @@ def _solve_block(X, X_binned, y, weights, rows, edges, n_classes,
         count += 1
         if count > candidate_limit:
             raise ValueError(
-                f"Bloco depth 2 tem mais de {candidate_limit} cortes de raiz; "
-                "reduza max_bins/features ou aumente candidate_limit explicitamente.")
+                f"The depth-2 block has more than {candidate_limit} root cuts; "
+                "reduce max_bins/features or raise candidate_limit explicitly.")
         left_histograms = right_histograms = None
         if parent_histograms is not None:
             smaller_left = len(left_rows) <= len(right_rows)
@@ -277,33 +277,33 @@ def fit_multilevel_tree(X, y, sample_weight=None, *, max_depth=4,
     """
     if (isinstance(max_depth, (bool, np.bool_)) or not isinstance(max_depth, (int, np.integer))
             or max_depth < 1):
-        raise ValueError("max_depth multinível deve ser inteiro >= 1.")
+        raise ValueError("The multilevel max_depth must be an integer >= 1.")
     if child_splitter is None:
         child_splitter = root_splitter
     if root_splitter not in ("hist", "exact") or child_splitter not in ("hist", "exact"):
-        raise ValueError("root_splitter e child_splitter devem ser hist ou exact.")
+        raise ValueError("root_splitter and child_splitter must be 'hist' or 'exact'.")
     for name, value, minimum in (("max_bins", max_bins, 2),
                                  ("min_samples_leaf", min_samples_leaf, 1),
                                  ("candidate_limit", candidate_limit, 1)):
         if (isinstance(value, (bool, np.bool_))
                 or not isinstance(value, (int, np.integer))
                 or value < minimum):
-            raise ValueError(f"{name} deve ser inteiro >= {minimum}.")
+            raise ValueError(f"{name} must be an integer >= {minimum}.")
     if max_bins > 255:
-        raise ValueError("max_bins deve ser <= 255.")
+        raise ValueError("max_bins must be <= 255.")
     if not np.isscalar(leaf_smoothing) or isinstance(leaf_smoothing, (bool, np.bool_)):
-        raise ValueError("leaf_smoothing deve ser finito e não negativo.")
+        raise ValueError("leaf_smoothing must be finite and non-negative.")
     try:
         valid_smoothing = float(leaf_smoothing)
     except (TypeError, ValueError) as exc:
-        raise ValueError("leaf_smoothing deve ser finito e não negativo.") from exc
+        raise ValueError("leaf_smoothing must be finite and non-negative.") from exc
     if not np.isfinite(valid_smoothing) or valid_smoothing < 0:
-        raise ValueError("leaf_smoothing deve ser finito e não negativo.")
+        raise ValueError("leaf_smoothing must be finite and non-negative.")
 
     started = perf_counter()
     X, encoded, weights, classes = prepare_training_data(X, y, sample_weight)
     if reuse_child_histograms and not np.all(weights == 1.0):
-        raise ValueError("reuse_child_histograms exige pesos unitários.")
+        raise ValueError("reuse_child_histograms requires unit sample weights.")
     n_classes = len(classes)
     feature_order = np.ascontiguousarray(
         check_random_state(random_state).permutation(X.shape[1]), dtype=np.int64)

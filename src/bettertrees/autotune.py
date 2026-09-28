@@ -65,11 +65,11 @@ class FastDecisionTreeClassifierCV(ClassifierMixin, BaseEstimator):
         leaves = sorted({int(v) for v in self.leaves_grid})
         shrinkage = sorted({float(v) for v in self.shrinkage_grid})
         if not leaves or leaves[0] < 2:
-            raise ValueError("leaves_grid precisa de inteiros >= 2.")
+            raise ValueError("leaves_grid must contain integers >= 2.")
         if not shrinkage or shrinkage[0] <= 0:
-            raise ValueError("shrinkage_grid precisa de valores > 0.")
+            raise ValueError("shrinkage_grid must contain values > 0.")
         if int(self.cv) < 2:
-            raise ValueError("cv deve ser >= 2.")
+            raise ValueError("cv must be >= 2.")
         X = np.asarray(X, dtype=np.float32)
         y = np.asarray(y)
         classes, encoded = np.unique(y, return_inverse=True)

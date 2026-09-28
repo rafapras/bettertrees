@@ -20,7 +20,7 @@ def prune_tree_cost_complexity(nodes, alpha):
         return nodes
     root_total = float(nodes.class_weight[0].sum())
     if root_total <= 0.0:
-        raise ValueError("Árvore contém raiz sem massa válida.")
+        raise ValueError("The tree has a root without valid weight.")
     order = []
     pending = [0]
     while pending:
@@ -148,7 +148,7 @@ def predict_proba_nodes(X, nodes, positive_leaf_probabilities=None,
     mass = nodes.class_weight[ids]
     totals = mass.sum(axis=1, keepdims=True)
     if (mass < 0).any() or not np.isfinite(mass).all() or (totals <= 0).any():
-        raise ValueError("Árvore contém folha sem massa válida.")
+        raise ValueError("The tree has a leaf without valid weight.")
     if leaf_probabilities is not None:
         return np.asarray(leaf_probabilities, dtype=np.float64)[ids]
     if positive_leaf_probabilities is None:
@@ -158,7 +158,7 @@ def predict_proba_nodes(X, nodes, positive_leaf_probabilities=None,
         prior = root_mass / root_mass.sum()
         return (mass + float(leaf_smoothing) * prior) / (totals + leaf_smoothing)
     if mass.shape[1] != 2:
-        raise ValueError("projeção monotônica exige exatamente duas classes.")
+        raise ValueError("The monotonic projection requires exactly two classes.")
     positive = np.asarray(positive_leaf_probabilities, dtype=np.float64)[ids]
     result = np.empty((len(ids), 2), dtype=np.float64)
     result[:, positive_class] = positive
@@ -275,7 +275,7 @@ def project_monotonic_leaf_probabilities(nodes, directions,
             if indegree[target] == 0:
                 queue.append(target)
     if len(order) != len(active_leaves):
-        raise ValueError("As regiões monotônicas formaram um ciclo inesperado.")
+        raise ValueError("The monotonic regions formed an unexpected cycle.")
     for source_pos in order:
         source = active_leaves[source_pos]
         for target_pos in adjacency[source_pos]:

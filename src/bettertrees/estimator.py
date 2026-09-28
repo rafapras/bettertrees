@@ -152,26 +152,26 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
             if (isinstance(value, (bool, np.bool_))
                     or not isinstance(value, Integral)
                     or value < minimum):
-                raise ValueError(f"{name} deve ser inteiro >= {minimum}.")
+                raise ValueError(f"{name} must be an integer >= {minimum}.")
         if self.max_bins > 255:
-            raise ValueError("max_bins deve ser <= 255.")
+            raise ValueError("max_bins must be <= 255.")
         if self.max_feature_repeats is not None and (
                 isinstance(self.max_feature_repeats, (bool, np.bool_))
                 or not isinstance(self.max_feature_repeats, Integral)
                 or self.max_feature_repeats < 1):
             raise ValueError(
-                "max_feature_repeats deve ser inteiro positivo ou None.")
+                "max_feature_repeats must be a positive integer or None.")
         if (isinstance(self.n_jobs, (bool, np.bool_))
                 or not isinstance(self.n_jobs, Integral) or self.n_jobs < 1):
-            raise ValueError("n_jobs deve ser inteiro >= 1.")
+            raise ValueError("n_jobs must be an integer >= 1.")
         if not isinstance(self.reuse_parent_histograms, (bool, np.bool_)):
-            raise ValueError("reuse_parent_histograms deve ser booleano.")
+            raise ValueError("reuse_parent_histograms must be a boolean.")
         if self.reuse_parent_histograms and self.splitter != "hist":
-            raise ValueError("reuso pai-filho requer splitter='hist'.")
+            raise ValueError("Parent-child histogram reuse requires splitter='hist'.")
         if self.reuse_parent_histograms and self.max_leaf_nodes is not None:
-            raise ValueError("reuso pai-filho requer max_leaf_nodes=None.")
+            raise ValueError("Parent-child histogram reuse requires max_leaf_nodes=None.")
         if self.monotonic_cst is not None and np.isscalar(self.monotonic_cst):
-            raise ValueError("monotonic_cst deve ser um vetor ou None.")
+            raise ValueError("monotonic_cst must be a vector or None.")
         resolve_splitter_spec(self.splitter, self.objective, self.search_stopping)
         for name in ("min_impurity_decrease", "gain_tolerance",
                      "leaf_smoothing", "ccp_alpha", "leaf_shrinkage"):
@@ -180,32 +180,32 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
                     or not isinstance(value, Real)
                     or not np.isfinite(value)
                     or value < 0):
-                raise ValueError(f"{name} deve ser finito e não negativo.")
+                raise ValueError(f"{name} must be finite and non-negative.")
         if self.leaf_shrinkage > 0 and self.leaf_smoothing > 0:
-            raise ValueError("use leaf_shrinkage OU leaf_smoothing, não os dois.")
+            raise ValueError("Use leaf_shrinkage OR leaf_smoothing, not both.")
         if self.leaf_shrinkage > 0 and self.monotonic_cst is not None:
-            raise ValueError("leaf_shrinkage ainda não combina com monotonic_cst.")
+            raise ValueError("leaf_shrinkage cannot be combined with monotonic_cst yet.")
         if (self.random_state is not None and (isinstance(self.random_state, bool)
                 or not isinstance(self.random_state, Integral))):
-            raise ValueError("random_state deve ser inteiro ou None.")
+            raise ValueError("random_state must be an integer or None.")
         check_random_state(self.random_state)
         if self.objective == "precision":
             if self.positive_class is None:
-                raise ValueError("positive_class deve ser informado para objective='precision'.")
+                raise ValueError("positive_class is required for objective='precision'.")
             if self.gain_tolerance != 0:
-                raise ValueError("gain_tolerance não se aplica a objective='precision'.")
+                raise ValueError("gain_tolerance does not apply to objective='precision'.")
             if self.ccp_alpha > 0:
-                raise ValueError("ccp_alpha positivo requer objective='gini'.")
+                raise ValueError("A positive ccp_alpha requires objective='gini'.")
         if (isinstance(self.min_precision, (bool, np.bool_))
                 or not isinstance(self.min_precision, Real)
                 or not np.isfinite(self.min_precision)
                 or not 0 <= self.min_precision <= 1):
-            raise ValueError("min_precision deve estar entre 0 e 1.")
+            raise ValueError("min_precision must be between 0 and 1.")
         if (isinstance(self.min_support, (bool, np.bool_))
                 or not isinstance(self.min_support, Real)
                 or not np.isfinite(self.min_support)
                 or self.min_support <= 0):
-            raise ValueError("min_support deve ser finito e positivo.")
+            raise ValueError("min_support must be finite and positive.")
 
     @staticmethod
     def _feature_names(X):
@@ -236,8 +236,8 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
             return
         if names != tuple(fitted_names):
             raise ValueError(
-                "Os nomes das features na previsão devem coincidir com os "
-                "nomes e a ordem usados no fit."
+                "Feature names at prediction time must match the "
+                "names and order seen during fit."
             )
 
     def _validate_predict_X(self, X):
@@ -250,23 +250,23 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         if self.monotonic_cst is None:
             return None
         if n_classes != 2:
-            raise ValueError("monotonic_cst só é suportado em classificação binária.")
+            raise ValueError("monotonic_cst is only supported for binary classification.")
         try:
             values = np.asarray(self.monotonic_cst)
         except Exception as exc:  # pragma: no cover - mensagem de contrato
-            raise ValueError("monotonic_cst deve ser um vetor de -1, 0 e 1.") from exc
+            raise ValueError("monotonic_cst must be a vector of -1, 0 and 1.") from exc
         if values.ndim != 1 or len(values) != n_features:
             raise ValueError(
-                "monotonic_cst deve ter uma direção por feature.")
+                "monotonic_cst must have one direction per feature.")
         if any(isinstance(value, (bool, np.bool_)) for value in values.tolist()):
-            raise ValueError("monotonic_cst só aceita -1, 0 e 1.")
+            raise ValueError("monotonic_cst only accepts -1, 0 and 1.")
         try:
             numeric = values.astype(np.float64)
         except (TypeError, ValueError) as exc:
-            raise ValueError("monotonic_cst só aceita -1, 0 e 1.") from exc
+            raise ValueError("monotonic_cst only accepts -1, 0 and 1.") from exc
         if (not np.isfinite(numeric).all()
                 or not np.isin(numeric, [-1.0, 0.0, 1.0]).all()):
-            raise ValueError("monotonic_cst só aceita -1, 0 e 1.")
+            raise ValueError("monotonic_cst only accepts -1, 0 and 1.")
         return numeric.astype(np.int8)
 
     @staticmethod
@@ -302,7 +302,7 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         splitter_spec = resolve_splitter_spec(
             self.splitter, self.objective, self.search_stopping)
         if self.search_stopping == "heuristic":
-            raise NotImplementedError("Heurística de parada ainda não especificada/validada.")
+            raise NotImplementedError("The heuristic stopping rule is not specified/validated yet.")
         prepare_start = perf_counter()
         X, encoded, weights, classes = prepare_training_data(X, y, sample_weight)
         prepare_seconds = perf_counter() - prepare_start
@@ -312,7 +312,7 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         if self.objective == "precision":
             matches = np.flatnonzero(classes == self.positive_class)
             if len(matches) != 1:
-                raise ValueError("positive_class deve aparecer exatamente uma vez em y.")
+                raise ValueError("positive_class must appear exactly once among the classes of y.")
             positive_class_index = int(matches[0])
         params = dict(n_classes=len(classes), max_depth=self.max_depth,
                       min_samples_leaf=self.min_samples_leaf,

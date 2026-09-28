@@ -55,13 +55,13 @@ def validate_X(X, *, n_features=None):
     """
     raw = np.asarray(X)
     if raw.ndim != 2 or 0 in raw.shape or raw.dtype.kind not in "biuf":
-        raise ValueError("X deve ser uma matriz numérica densa não vazia.")
+        raise ValueError("X must be a non-empty dense numeric array.")
     with np.errstate(over="ignore", invalid="ignore"):
         out = np.ascontiguousarray(raw, dtype=np.float32)
     if np.isinf(out).any():
-        raise ValueError("X não aceita infinito nem valores fora de float32.")
+        raise ValueError("X cannot contain infinity or values outside the float32 range.")
     if n_features is not None and out.shape[1] != n_features:
-        raise ValueError("Número de colunas diferente do treino.")
+        raise ValueError("The number of columns differs from training.")
     return out
 
 
@@ -78,7 +78,7 @@ def prepare_training_data(X, y, sample_weight=None):
     X = validate_X(X)
     target = np.asarray(y)
     if target.ndim != 1 or len(target) != len(X):
-        raise ValueError("y deve ter uma classe por linha de X.")
+        raise ValueError("y must have one label per row of X.")
     check_classification_targets(target)
     classes, encoded = np.unique(target, return_inverse=True)
     weights = (np.ones(len(X), dtype=np.float64) if sample_weight is None
@@ -86,7 +86,7 @@ def prepare_training_data(X, y, sample_weight=None):
     if weights.shape != (len(X),) or not np.isfinite(weights).all():
         raise ValueError("sample_weight deve ser um vetor finito alinhado a X.")
     if (weights < 0).any() or not (weights > 0).any():
-        raise ValueError("Pesos precisam ser não negativos e ter soma positiva.")
+        raise ValueError("Sample weights must be non-negative with a positive sum.")
     if not np.isfinite(weights.sum()):
         raise ValueError("Soma de pesos excede a capacidade de float64.")
     active = weights > 0

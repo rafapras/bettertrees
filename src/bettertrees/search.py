@@ -50,18 +50,18 @@ def scan_histogram_feature(mass, count, edges, parent_mass, *, min_samples_leaf,
                             bound_interval=1, parent_gini=None):
     """Valide a entrada e encaminhe a varredura para o kernel Numba."""
     if search_stopping not in ("off", "bound"):
-        raise ValueError("search_stopping deve ser off ou bound.")
+        raise ValueError("search_stopping must be 'off' or 'bound'.")
     if (isinstance(bound_interval, (bool, np.bool_))
             or not isinstance(bound_interval, (int, np.integer))
             or bound_interval < 1):
-        raise ValueError("bound_interval deve ser inteiro positivo.")
+        raise ValueError("bound_interval must be a positive integer.")
     mass = np.ascontiguousarray(mass, dtype=np.float64)
     count = np.ascontiguousarray(count, dtype=np.int64)
     parent_mass = np.ascontiguousarray(parent_mass, dtype=np.float64)
     if mass.ndim != 2 or count.ndim != 1 or mass.shape[0] != len(count):
-        raise ValueError("Histograma com shape inconsistente.")
+        raise ValueError("Histogram with an inconsistent shape.")
     if mass.shape[1] != len(parent_mass):
-        raise ValueError("Massas do histograma e do pai incompatíveis.")
+        raise ValueError("Histogram and parent weights do not match.")
     if len(mass) == 0:
         return -1, False, -np.inf, 0, 0, 0
     parent_total = float(parent_mass.sum())
@@ -83,13 +83,13 @@ def scan_histogram_feature_precision(mass, count, parent_mass, *,
     count = np.ascontiguousarray(count, dtype=np.int64)
     parent_mass = np.ascontiguousarray(parent_mass, dtype=np.float64)
     if mass.ndim != 2 or count.ndim != 1 or mass.shape[0] != len(count):
-        raise ValueError("Histograma com shape inconsistente.")
+        raise ValueError("Histogram with an inconsistent shape.")
     if mass.shape[1] != len(parent_mass):
-        raise ValueError("Massas do histograma e do pai incompatíveis.")
+        raise ValueError("Histogram and parent weights do not match.")
     if (isinstance(positive_class, (bool, np.bool_))
             or not isinstance(positive_class, (int, np.integer))
             or not 0 <= positive_class < mass.shape[1]):
-        raise ValueError("positive_class deve ser um índice de classe válido.")
+        raise ValueError("positive_class must be a valid class index.")
     return _scan_histogram_feature_precision_numba(
         mass, count, parent_mass, int(min_samples_leaf), int(positive_class),
         float(min_precision), float(min_support))
@@ -105,7 +105,7 @@ def find_best_split_exact(X, y, weights, sample_indices, start, end,
     ``sample_indices[start:end]``; ausente, é somada aqui.
     """
     if search_stopping not in ("off", "bound"):
-        raise ValueError("search_stopping deve ser off ou bound.")
+        raise ValueError("search_stopping must be 'off' or 'bound'.")
     rows = np.asarray(sample_indices[start:end], dtype=np.int64)
     parent_mass = _parent_mass_or_sum(parent_mass, y, weights, rows, n_classes)
     if parent_mass.sum() <= 0.0:
@@ -189,7 +189,7 @@ def _find_best_split_hist_feature_major(X_binned, y, weights, sample_indices, st
     posterior.
     """
     if search_stopping not in ("off", "bound"):
-        raise ValueError("search_stopping deve ser off ou bound.")
+        raise ValueError("search_stopping must be 'off' or 'bound'.")
     rows = np.asarray(sample_indices[start:end], dtype=np.int64)
     if parent_mass is None:
         parent_mass = np.zeros(n_classes, dtype=np.float64)
@@ -331,7 +331,7 @@ def find_best_split_hist(X_binned, y, weights, sample_indices, start, end,
             X_binned, y, weights, sample_indices, start, end,
             n_features, max_bins, n_classes)
     if search_stopping not in ("off", "bound"):
-        raise ValueError("search_stopping deve ser off ou bound.")
+        raise ValueError("search_stopping must be 'off' or 'bound'.")
     if parent_mass is None:
         parent_mass = np.zeros(n_classes, dtype=np.float64)
         for row in sample_indices[start:end]:

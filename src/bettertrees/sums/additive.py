@@ -144,7 +144,7 @@ class AdditiveTreeBooster(InterpretableSumMixin, ClassifierMixin, BaseEstimator)
         self
         """
         if self.depth not in (1, 2):
-            raise ValueError("depth deve ser 1 ou 2.")
+            raise ValueError("depth must be 1 or 2.")
         X, classes, target, w = fit_inputs(self, X, y, sample_weight, y_soft)
         n = len(X)
         rng = np.random.default_rng(self.random_state)

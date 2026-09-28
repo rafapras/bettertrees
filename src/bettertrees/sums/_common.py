@@ -10,7 +10,7 @@ def as_float_matrix(X):
     """X float64 C-contiguous (os kernels de combinação leem valores brutos)."""
     X = np.ascontiguousarray(np.asarray(X, dtype=np.float64))
     if X.ndim != 2:
-        raise ValueError("X deve ser uma matriz 2D.")
+        raise ValueError("X must be a 2D array.")
     return X
 
 
@@ -18,7 +18,7 @@ def as_target(y, n):
     """Alvo binário 0/1 ou suave em [0, 1], float64."""
     y = np.ascontiguousarray(np.asarray(y, dtype=np.float64))
     if y.shape != (n,) or not np.isfinite(y).all() or (y < 0).any() or (y > 1).any():
-        raise ValueError("y deve ser um vetor em [0, 1] alinhado a X.")
+        raise ValueError("y must be a vector in [0, 1] aligned with X.")
     return y
 
 
@@ -27,7 +27,7 @@ def as_weights(sample_weight, n):
         return np.ones(n)
     w = np.ascontiguousarray(np.asarray(sample_weight, dtype=np.float64))
     if w.shape != (n,) or not np.isfinite(w).all() or (w < 0).any():
-        raise ValueError("sample_weight deve ser finito, não negativo e alinhado a X.")
+        raise ValueError("sample_weight must be finite, non-negative and aligned with X.")
     return w
 
 
@@ -135,11 +135,11 @@ def fit_inputs(est, X, y, sample_weight=None, y_soft=None):
                          f"is {y_type}.")
     classes, encoded = np.unique(y, return_inverse=True)
     if len(classes) != 2:
-        raise ValueError("classificação binária: y tem uma só classe (one class).")
+        raise ValueError("Binary classification needs two classes; y has only one class.")
     target = encoded.astype(np.float64) if y_soft is None else as_target(y_soft, len(X))
     w = _check_sample_weight(sample_weight, X, dtype=np.float64, ensure_non_negative=True)
     if not w.sum() > 0:
-        raise ValueError("sample_weight soma zero.")
+        raise ValueError("sample_weight sums to zero.")
     est.nan_features_ = np.isnan(X).any(axis=0)
     return X, classes, target, np.ascontiguousarray(w)
 

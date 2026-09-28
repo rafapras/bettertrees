@@ -193,7 +193,7 @@ def test_child_histogram_reuse_preserves_tree_and_probabilities(seed):
 def test_child_histogram_reuse_rejects_nonunit_weights():
     X = np.array([[0], [1], [2], [3]], dtype=np.float32)
     y = np.array([0, 1, 0, 1])
-    with pytest.raises(ValueError, match="pesos unitários"):
+    with pytest.raises(ValueError, match="unit sample weights"):
         fit_multilevel_tree(X, y, sample_weight=np.array([1, 2, 1, 1]),
                             max_depth=2, min_samples_leaf=1,
                             reuse_child_histograms=True)

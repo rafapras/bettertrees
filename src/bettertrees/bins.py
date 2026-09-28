@@ -99,10 +99,10 @@ def fit_bin_edges(X, max_bins=255, n_jobs=1):
     if (isinstance(max_bins, (bool, np.bool_))
             or not isinstance(max_bins, (int, np.integer))
             or not 2 <= max_bins <= 255):
-        raise ValueError("max_bins deve ser inteiro entre 2 e 255.")
+        raise ValueError("max_bins must be an integer between 2 and 255.")
     if (isinstance(n_jobs, (bool, np.bool_))
             or not isinstance(n_jobs, (int, np.integer)) or n_jobs < 1):
-        raise ValueError("n_jobs deve ser inteiro positivo.")
+        raise ValueError("n_jobs must be a positive integer.")
     quantiles = np.arange(1, max_bins) / max_bins
     columns = tuple(X[:, j] for j in range(X.shape[1]))
     if n_jobs == 1:
@@ -135,7 +135,7 @@ def _fit_bin_edges_binary(X, max_bins=255):
     if (isinstance(max_bins, (bool, np.bool_))
             or not isinstance(max_bins, (int, np.integer))
             or not 2 <= max_bins <= 255):
-        raise ValueError("max_bins deve ser inteiro entre 2 e 255.")
+        raise ValueError("max_bins must be an integer between 2 and 255.")
     edges = []
     quantiles = np.arange(1, max_bins) / max_bins
     for col in X.T:
@@ -174,7 +174,7 @@ def transform_bins(X, edges):
     Contrato interno: X já validado e edges gerado por fit_bin_edges.
     """
     if len(edges) != X.shape[1]:
-        raise ValueError("Uma lista de limites é necessária por coluna.")
+        raise ValueError("One list of edges is required per column.")
     result = np.empty(X.shape, dtype=np.uint8)
     for j, cuts in enumerate(edges):
         result[:, j] = np.searchsorted(cuts, X[:, j], side="left") + 1
@@ -231,10 +231,10 @@ def transform_bins_row_major(X, edges, n_jobs=1):
     disponivel como baseline comparavel; ambos exigem X previamente validado.
     """
     if len(edges) != X.shape[1]:
-        raise ValueError("Uma lista de limites é necessária por coluna.")
+        raise ValueError("One list of edges is required per column.")
     if (isinstance(n_jobs, (bool, np.bool_)) or not isinstance(n_jobs, (int, np.integer))
             or n_jobs < 1):
-        raise ValueError("n_jobs deve ser inteiro positivo.")
+        raise ValueError("n_jobs must be a positive integer.")
     lengths = np.fromiter((len(cuts) for cuts in edges), count=len(edges), dtype=np.int64)
     padded = np.zeros((len(edges), int(lengths.max(initial=0))), dtype=np.float64)
     for j, cuts in enumerate(edges):

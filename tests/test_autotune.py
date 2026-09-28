@@ -67,7 +67,7 @@ def test_estimator_uses_shrunk_probabilities_and_keeps_invariants():
 
 def test_shrinkage_rejects_conflicting_options():
     X, y = _data(n=200)
-    with pytest.raises(ValueError, match="leaf_shrinkage OU leaf_smoothing"):
+    with pytest.raises(ValueError, match="leaf_shrinkage OR leaf_smoothing"):
         FastDecisionTreeClassifier(leaf_shrinkage=1.0, leaf_smoothing=1.0).fit(X, y)
     with pytest.raises(ValueError, match="monotonic_cst"):
         FastDecisionTreeClassifier(leaf_shrinkage=1.0,

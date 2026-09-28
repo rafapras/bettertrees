@@ -41,7 +41,7 @@ def crossfit_teacher(X, y, *, n_splits=5, random_state=0, params=None,
     X = as_float_matrix(X)
     classes, yy = np.unique(np.asarray(y), return_inverse=True)
     if len(classes) != 2:
-        raise ValueError("crossfit_teacher é binário.")
+        raise ValueError("crossfit_teacher supports binary targets only.")
     cfg = dict(TEACHER_DEFAULTS, random_state=random_state, **(params or {}))
     p = np.full(len(X), np.nan)
     fold = np.full(len(X), -1, dtype=np.int64)
@@ -102,7 +102,7 @@ def restate_leaf_masses(model, X, y, sample_weight=None):
     w = as_weights(sample_weight, len(X))
     cls = np.searchsorted(model.classes_, np.asarray(y))
     if (cls >= len(model.classes_)).any() or (model.classes_[cls] != np.asarray(y)).any():
-        raise ValueError("y contém classes fora de model.classes_.")
+        raise ValueError("y contains classes not in model.classes_.")
     leaves = model.apply(X)
     cw = np.zeros_like(nodes.class_weight)
     ns = np.zeros_like(nodes.n_samples)
@@ -142,16 +142,16 @@ def fit_tree_on_target(X, y, p, target, *, leaf_target="y", sample_weight=None,
         model = FastDecisionTreeClassifier(**tree_params).fit(X, y, sample_weight)
         return model
     if target != "p":
-        raise ValueError("target deve ser 'y' ou 'p'.")
+        raise ValueError("target must be 'y' or 'p'.")
     classes = np.unique(np.asarray(y)) if classes is None else np.asarray(classes)
     if len(classes) != 2:
-        raise ValueError("alvo suave exige y binário.")
+        raise ValueError("A soft target requires a binary y.")
     X2, y2, w2 = soft_label_expand(X, p, sample_weight)
     model = FastDecisionTreeClassifier(**tree_params).fit(X2, classes[y2], w2)
     if leaf_target == "y":
         restate_leaf_masses(model, X, y, sample_weight)
     elif leaf_target != "p":
-        raise ValueError("leaf_target deve ser 'y' ou 'p'.")
+        raise ValueError("leaf_target must be 'y' or 'p'.")
     return model
 
 
@@ -179,11 +179,11 @@ class MixedDepthTree(ClassifierMixin, BaseEstimator):
         w = as_weights(sample_weight, len(X))
         p = as_target(p, len(X))
         if not 0 < self.top_depth <= self.depth:
-            raise ValueError("0 < top_depth <= depth.")
+            raise ValueError("top_depth must satisfy 0 < top_depth <= depth.")
         params = dict(self.tree_params or {})
         self.classes_ = np.unique(y)
         if len(self.classes_) != 2:
-            raise ValueError("MixedDepthTree é binária.")
+            raise ValueError("MixedDepthTree supports binary targets only.")
         self.top_ = fit_tree_on_target(X, y, p, self.top_target,
                                        leaf_target=self.leaf_target, sample_weight=w,
                                        classes=self.classes_,

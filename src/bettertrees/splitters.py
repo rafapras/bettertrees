@@ -171,21 +171,21 @@ def resolve_objective(objective):
     """Resolva um nome de objetivo sem aceitar fallback silencioso."""
     if not isinstance(objective, str) or objective not in _OBJECTIVES:
         available = ", ".join(sorted(_OBJECTIVES))
-        raise ValueError(f"objective deve ser um de: {available}.")
+        raise ValueError(f"objective must be one of: {available}.")
     return _OBJECTIVES[objective]
 
 
 def resolve_splitter_spec(splitter, objective="gini", search_stopping="bound"):
     """Valide a combinação motor + objetivo + parada uma vez por fit."""
     if splitter not in _ENGINES:
-        raise ValueError("splitter deve ser hist ou exact.")
+        raise ValueError("splitter must be 'hist' or 'exact'.")
     spec = resolve_objective(objective)
     if splitter == "hist" and not spec.supports_hist:
-        raise ValueError(f"objective={objective!r} não suporta splitter='hist'.")
+        raise ValueError(f"objective={objective!r} does not support splitter='hist'.")
     if splitter == "exact" and not spec.supports_exact:
-        raise ValueError(f"objective={objective!r} não suporta splitter='exact'.")
+        raise ValueError(f"objective={objective!r} does not support splitter='exact'.")
     if search_stopping not in ("off", "bound", "heuristic"):
-        raise ValueError("search_stopping deve ser off, bound ou heuristic.")
+        raise ValueError("search_stopping must be 'off', 'bound' or 'heuristic'.")
     if search_stopping == "bound" and not spec.supports_admissible_bound:
-        raise ValueError(f"objective={objective!r} não possui bound admissível.")
+        raise ValueError(f"objective={objective!r} has no admissible bound.")
     return spec

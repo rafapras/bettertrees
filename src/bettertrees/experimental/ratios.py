@@ -33,7 +33,7 @@ def pair_shape_scores(X, y, margin=None, sample_weight=None, *, pairs=None,
                       kind="ratio", max_bins=32, lam=1.0, min_weight=20.0):
     """Teste de forma por par; dict de arrays alinhados a ``pairs``."""
     if kind not in _KINDS:
-        raise ValueError("kind deve ser 'ratio' ou 'diff'.")
+        raise ValueError("kind must be 'ratio' or 'diff'.")
     X = as_float_matrix(X)
     n, p = X.shape
     y = as_target(y, n)
