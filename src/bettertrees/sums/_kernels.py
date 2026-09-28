@@ -827,17 +827,18 @@ def l1_logistic_path(indptr, indices, scale, y, lambdas, cost, max_cost, tol, ma
 
 
 @njit(cache=True, parallel=True)
-def reuse_gains(ids, n_terms, g, h, lam):
+def reuse_gains(ids, n_terms, g, h, lam, slots):
     """Newton gain of re-boosting each existing term (``CompactTreeBooster``).
 
-    ``ids`` is (capacity, n) int8 with the leaf (0..3) of every row in each of
-    the first ``n_terms`` terms; returns gain[n_terms] = Σ_leaf G²/(H+λ) - G²/(H+λ).
+    ``ids`` is (capacity, n) int8 with the leaf node (< ``slots``) of every row in
+    each of the first ``n_terms`` terms; returns
+    gain[n_terms] = sum_leaf G^2/(H+lambda) - G_total^2/(H_total+lambda).
     """
     n = ids.shape[1]
     out = np.zeros(n_terms)
     for s in prange(n_terms):
-        G = np.zeros(4)
-        H = np.zeros(4)
+        G = np.zeros(slots)
+        H = np.zeros(slots)
         for i in range(n):
             k = ids[s, i]
             G[k] += g[i]
@@ -845,8 +846,9 @@ def reuse_gains(ids, n_terms, g, h, lam):
         gt = 0.0
         ht = 0.0
         acc = 0.0
-        for k in range(4):
-            acc += G[k] * G[k] / (H[k] + lam)
+        for k in range(slots):
+            if H[k] > 0.0 or G[k] != 0.0:
+                acc += G[k] * G[k] / (H[k] + lam)
             gt += G[k]
             ht += H[k]
         out[s] = acc - gt * gt / (ht + lam)

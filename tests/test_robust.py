@@ -88,23 +88,56 @@ def test_compact_counts_distinct_cuts_and_reuses_terms():
     assert reuse.n_rounds_ > plain.n_rounds_  # re-boosting existing terms is free
 
 
-def test_compact_stump_is_absorbed_by_a_tree_with_the_same_root():
+def _tree(nested, values):
+    from bettertrees.sums.smalltrees import SmallTree
+    t = SmallTree.from_nested(nested)
+    t.value = np.asarray(values, dtype=float)
+    return t
+
+
+def test_compact_merges_refined_trees_and_counts_distinct_cuts():
     from bettertrees.sums.compact import _TermSet
+    from bettertrees.sums.edit import _key
+    stump = _tree((0, 5, None, None), [0, 1.0, 2.0])
+    d2 = _tree((0, 5, (1, 3, None, None), (2, 4, None, None)), np.arange(7) / 10)
     ts = _TermSet()
-    ts.add((0, 5, -1, -1, -1, -1), np.array([1.0, 0, 2.0, 0]))
-    assert ts.n_cuts == 1
-    assert ts.cost((0, 5, 1, 3, 2, 4)) == 2  # 3 cuts minus the absorbed stump
-    ts.add((0, 5, 1, 3, 2, 4), np.array([0.1, 0.2, 0.3, 0.4]))
+    ts.add(_key(stump), stump)
+    assert ts.n_cuts == 1 and ts.cost(_key(d2)) == 2  # 3 cuts minus the absorbed stump
+    ts.add(_key(d2), d2)
     assert ts.n_cuts == 3 and len(ts.terms) == 1
-    np.testing.assert_allclose(ts.terms[(0, 5, 1, 3, 2, 4)], [1.1, 1.2, 2.3, 2.4])
-    ts.add((0, 5, -1, -1, -1, -1), np.array([1.0, 0, -1.0, 0]))  # absorbed again, free
+    np.testing.assert_allclose(ts.terms[_key(d2)].value, [0, 0.1, 0.2, 1.3, 1.4, 2.5, 2.6])
+    ts.add(_key(stump), stump)  # a coarser tree is absorbed for free
     assert ts.n_cuts == 3
-    np.testing.assert_allclose(ts.terms[(0, 5, 1, 3, 2, 4)], [2.1, 2.2, 1.3, 1.4])
+    np.testing.assert_allclose(ts.terms[_key(d2)].value, [0, 0.1, 0.2, 2.3, 2.4, 4.5, 4.6])
+    grown = _tree((0, 5, (1, 3, (3, 1, None, None), None), (2, 4, None, None)), np.zeros(9))
+    assert ts.cost(_key(grown)) == 1  # growing a leaf pays only the new cut
+    ts.add(_key(grown), grown)
+    assert ts.n_cuts == 4 and len(ts.terms) == 1
 
 
-def test_compact_auto_depth_mixes_stumps_and_pairs():
+def test_compact_merged_model_predicts_like_the_sum_of_rounds():
+    """Merging and absorption must not change predictions: refit-free model =
+    base + sum of every boosting step kept."""
     from bettertrees import CompactTreeBooster
-    X, y = _data(n=6000)
-    m = CompactTreeBooster(max_splits=30, depth="auto").fit(X, y)
-    sizes = {t.n_splits for t in m.trees_}
-    assert m.n_splits_ <= 30 and sizes <= {1, 2, 3}
+    X, y = _data(n=3000)
+    m = CompactTreeBooster(max_splits=24, depth="auto", validation_fraction=0).fit(X, y)
+    trees = m.trees_
+    keys = [tuple(zip(t.feature, t.threshold, t.left)) for t in trees]
+    assert len(keys) == len(set(keys))
+    assert m.n_splits_ <= 24
+    np.testing.assert_allclose(m.base_margin_ + m.predict_contributions(X).sum(axis=1),
+                               m.decision_function(X), atol=1e-9)
+
+
+@pytest.mark.parametrize("depth", [1, 2, 3, "auto"])
+def test_compact_depths_and_growth_respect_limits(depth):
+    from bettertrees import CompactTreeBooster
+    X, y = _data(n=5000)
+    m = CompactTreeBooster(max_splits=30, depth=depth, max_depth=3).fit(X, y)
+    assert 0 < m.n_splits_ <= 30
+    for t in m.trees_:
+        depth_of = {0: 0}
+        for k in range(len(t.feature)):
+            if t.left[k] != -1:
+                depth_of[t.left[k]] = depth_of[t.right[k]] = depth_of[k] + 1
+        assert max(depth_of.values()) <= 3
