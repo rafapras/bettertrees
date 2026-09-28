@@ -25,9 +25,9 @@ from .kernels import (
 
 
 def hist_edge_layout(edges):
-    """Devolva (max_bins, comprimentos finitos int64) para reutilizar no fit.
+    """Return (max_bins, finite lengths int64) to reuse during the fit.
 
-    Evita recalcular em Python, a cada nó, valores que dependem só dos bins.
+    Avoids recomputing in Python, at every node, values that depend only on the bins.
     """
     lengths = np.ascontiguousarray(
         np.asarray([len(edge) for edge in edges], dtype=np.int64))
@@ -36,7 +36,7 @@ def hist_edge_layout(edges):
 
 
 def _parent_mass_or_sum(parent_mass, y, weights, rows, n_classes):
-    """Use a massa do nó já somada pelo builder; some só se ela faltar."""
+    """Use the node mass already summed by the builder; sum only if it is missing."""
     if parent_mass is not None:
         return np.ascontiguousarray(parent_mass, dtype=np.float64)
     total = np.zeros(n_classes, dtype=np.float64)
@@ -48,7 +48,7 @@ def _parent_mass_or_sum(parent_mass, y, weights, rows, n_classes):
 def scan_histogram_feature(mass, count, edges, parent_mass, *, min_samples_leaf,
                             incumbent_gain, search_stopping="bound", gain_tolerance=0.0,
                             bound_interval=1, parent_gini=None):
-    """Valide a entrada e encaminhe a varredura para o kernel Numba."""
+    """Validate the input and dispatch the scan to the Numba kernel."""
     if search_stopping not in ("off", "bound"):
         raise ValueError("search_stopping must be 'off' or 'bound'.")
     if (isinstance(bound_interval, (bool, np.bool_))
@@ -78,7 +78,7 @@ def scan_histogram_feature(mass, count, edges, parent_mass, *, min_samples_leaf,
 def scan_histogram_feature_precision(mass, count, parent_mass, *,
                                      min_samples_leaf, positive_class,
                                      min_precision, min_support):
-    """Varra um histograma para o objetivo de precisão, sem parada por bound."""
+    """Scan a histogram for the precision objective, without bound-based stopping."""
     mass = np.ascontiguousarray(mass, dtype=np.float64)
     count = np.ascontiguousarray(count, dtype=np.int64)
     parent_mass = np.ascontiguousarray(parent_mass, dtype=np.float64)
@@ -99,10 +99,10 @@ def find_best_split_exact(X, y, weights, sample_indices, start, end,
                           n_classes, min_samples_leaf, feature_order,
                           search_stopping="off", gain_tolerance=0.0,
                           stats=None, parent_mass=None):
-    """Busque o melhor corte Gini exato do nó num único kernel Numba.
+    """Find the best exact Gini cut of the node in a single Numba kernel.
 
-    ``parent_mass`` deve ser a massa do nó somada na ordem de
-    ``sample_indices[start:end]``; ausente, é somada aqui.
+    ``parent_mass`` must be the node mass summed in the order of
+    ``sample_indices[start:end]``; when absent it is summed here.
     """
     if search_stopping not in ("off", "bound"):
         raise ValueError("search_stopping must be 'off' or 'bound'.")
@@ -131,10 +131,10 @@ def find_best_split_exact_precision(
         X, y, weights, sample_indices, start, end, n_classes,
         min_samples_leaf, feature_order, positive_class, min_precision,
         min_support, stats=None, parent_mass=None):
-    """Ordene em NumPy e avalie precision em um kernel por feature.
+    """Sort in NumPy and evaluate precision in one kernel per feature.
 
-    Experimental: maximiza a melhor precision filha menos a do pai (com
-    suporte mínimo), não TP nem cobertura.
+    Experimental: maximizes the best child precision minus the parent's (with
+    minimum support), not true positives or coverage.
     """
     rows = np.asarray(sample_indices[start:end], dtype=np.int64)
     parent_mass = _parent_mass_or_sum(parent_mass, y, weights, rows, n_classes)
@@ -173,20 +173,18 @@ def _find_best_split_hist_feature_major(X_binned, y, weights, sample_indices, st
                          parent_mass=None, parallel=False, prebuilt_histograms=None,
                          objective="gini", positive_class=0, min_precision=0.0,
                          min_support=0.0, edge_layout=None):
-    """Busque o melhor corte de Gini em histogramas por feature.
+    """Find the best Gini cut on per-feature histograms.
 
-    ``edge_layout`` é aceito para ter a mesma assinatura de
-    ``find_best_split_hist`` e ignorado: cada histograma é montado por feature.
+    ``edge_layout`` is accepted to share the signature of
+    ``find_best_split_hist`` and ignored: each histogram is built per feature.
 
-    Acumular SEPARADAMENTE contagem de linhas e massas ponderadas; prefixos
-    avaliam cortes entre bins finitos e as duas direções de NaN (bin 0).
-    Aplicar suporte, massa, desempates e corte só de missing como no exato.
-    Traduzir bin_threshold=b para edges[feature][b-1] na escala original;
-    corte apenas missing usa threshold=+inf e bin_threshold=n_bins_finitos.
-    Custo esperado por nó: O(n_node*p + p*B*K), scratch O(B*K) por feature.
-    Não criar máscara ou submatriz por candidato. Esta versão mantém a tupla
-    de edges no lado Python; compactação para um kernel único é otimização
-    posterior.
+    Row counts and weighted masses are accumulated SEPARATELY; prefixes score
+    cuts between finite bins and both NaN directions (bin 0). Support, mass,
+    tie-breaking and the missing-only cut are applied as in the exact engine.
+    bin_threshold=b maps to edges[feature][b-1] on the original scale; the
+    missing-only cut uses threshold=+inf and bin_threshold=n_finite_bins.
+    Expected cost per node: O(n_node*p + p*B*K), scratch O(B*K) per feature.
+    No mask or submatrix is created per candidate.
     """
     if search_stopping not in ("off", "bound"):
         raise ValueError("search_stopping must be 'off' or 'bound'.")
@@ -260,10 +258,11 @@ def _find_best_split_hist_feature_major(X_binned, y, weights, sample_indices, st
 def _build_histograms_for_node(X_binned, y, weights, sample_indices, start, end,
                                edges, n_classes, parallel=False,
                                edge_layout=None):
-    """Acumule o pacote completo de histogramas de um nó.
+    """Accumulate the full set of histograms of a node.
 
-    Função Python deliberadamente fora do kernel: permite entregar o pacote
-    ao filho e medir a variante pai-filho sem duplicar a lógica de layout.
+    A Python function deliberately outside the kernel: it lets the builder
+    hand the set to a child and measure the parent-child variant without
+    duplicating the layout logic.
     """
     n_features = X_binned.shape[1]
     max_bins = (hist_edge_layout(edges) if edge_layout is None
@@ -282,15 +281,15 @@ def find_best_split_hist(X_binned, y, weights, sample_indices, start, end,
                          objective="gini", positive_class=0, min_precision=0.0,
                          min_support=0.0, feature_subset=False,
                          edge_layout=None):
-    """Busque o melhor corte com histogramas acumulados em ordem de linhas.
+    """Find the best cut with histograms accumulated in row order.
 
-    ``feature_order`` pode ser um subconjunto das features (limite por
-    caminho): os histogramas continuam acumulados para todas as colunas em
-    ordem de linhas e só o subconjunto é varrido. ``feature_subset=True``
-    força o caminho por feature, mantido para comparações reproduzíveis.
-    ``edge_layout`` vem de ``hist_edge_layout`` e evita recalcular o layout.
-    O objetivo ``precision`` é experimental: maximiza a melhor precision filha
-    menos a do pai, não TP nem cobertura.
+    ``feature_order`` may be a subset of the features (per-path limit): the
+    histograms are still accumulated for every column in row order and only
+    the subset is scanned. ``feature_subset=True`` forces the per-feature path,
+    kept for reproducible comparisons. ``edge_layout`` comes from
+    ``hist_edge_layout`` and avoids recomputing the layout. The ``precision``
+    objective is experimental: it maximizes the best child precision minus the
+    parent's, not true positives or coverage.
     """
     if edge_layout is None:
         edge_layout = hist_edge_layout(edges)

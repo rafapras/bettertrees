@@ -16,11 +16,11 @@ from .kernels import apply_nodes, gini
 
 
 def prune_tree_cost_complexity(nodes, alpha):
-    """Selecione subárvore por risco Gini ponderado + alpha por folha.
+    """Select the subtree by weighted Gini risk + alpha per leaf.
 
-    A programação dinâmica é linear no número de nós e não consulta X:
-    class_weight já contém a massa de treino de cada nó. A saída é compacta,
-    de modo que introspecção e previsão veem somente nós alcançáveis.
+    The dynamic program is linear in the number of nodes and does not read X:
+    class_weight already holds each node's training mass. The output is
+    compact, so introspection and prediction only see reachable nodes.
     """
     if alpha <= 0.0:
         return nodes
@@ -76,13 +76,13 @@ def prune_tree_cost_complexity(nodes, alpha):
 
 
 def hierarchical_shrinkage_probabilities(nodes, shrinkage):
-    """Probabilidade de CADA nó com shrinkage hierárquico (Agarwal et al. 2022).
+    """Probability of EVERY node with hierarchical shrinkage (Agarwal et al. 2022).
 
-    p(nó) = p(pai) + (freq(nó) - freq(pai)) / (1 + shrinkage / massa(pai)),
-    começando na frequência da raiz. Como o peso 1/(1 + λ/massa) cai com a
-    profundidade, p(folha) é uma combinação convexa das frequências dos
-    ancestrais: sempre uma distribuição válida e, com λ > 0, sem zeros para
-    classes presentes na raiz. λ = 0 devolve as frequências cruas.
+    p(node) = p(parent) + (freq(node) - freq(parent)) / (1 + shrinkage / mass(parent)),
+    starting from the root frequency. Since the weight 1 / (1 + lambda / mass)
+    falls with depth, p(leaf) is a convex combination of its ancestors'
+    frequencies: always a valid distribution and, with lambda > 0, without
+    zeros for classes present at the root. lambda = 0 returns the raw frequencies.
     """
     mass = np.asarray(nodes.class_weight, dtype=np.float64)
     totals = mass.sum(axis=1)
@@ -103,11 +103,11 @@ def hierarchical_shrinkage_probabilities(nodes, shrinkage):
 
 
 def expansion_steps(nodes):
-    """Passo em que cada nó foi expandido (inf = folha).
+    """Step at which each node was expanded (inf = leaf).
 
-    Sem poda, os ids dos filhos saem na ordem de expansão do builder; então a
-    árvore best-first com L folhas é o prefixo com as L-1 primeiras
-    expansões (a ordem não depende do orçamento).
+    Without pruning, children ids follow the builder's expansion order, so the
+    best-first tree with L leaves is the prefix with the first L-1 expansions
+    (the order does not depend on the budget).
     """
     left = np.asarray(nodes.left)
     internal = np.flatnonzero(left != -1)
@@ -118,7 +118,7 @@ def expansion_steps(nodes):
 
 
 def prefix_leaf_ids(X, nodes, steps, n_leaves):
-    """Nó final de cada linha na árvore-prefixo com ``n_leaves`` folhas."""
+    """Final node of each row in the prefix tree with ``n_leaves`` leaves."""
     budget = n_leaves - 1
     node = np.zeros(len(X), dtype=np.int64)
     active = np.ones(len(X), dtype=bool)
@@ -142,12 +142,12 @@ def prefix_leaf_ids(X, nodes, steps, n_leaves):
 def predict_proba_nodes(X, nodes, positive_leaf_probabilities=None,
                         positive_class=1, leaf_smoothing=0.0,
                         leaf_probabilities=None):
-    """Normalize massas da folha para probabilidades float64 (n,K).
+    """Normalize leaf masses into float64 probabilities (n, K).
 
-    Com leaf_smoothing=0, mesmos zeros e frequências da folha do CART.
-    Caso contrário, encolha as massas em direção à distribuição da raiz.
-    Folha com massa inválida é erro do builder e gera ValueError, não uma
-    distribuição inventada. A API pública valida X antes desta chamada.
+    With leaf_smoothing=0, the same zeros and frequencies as a CART leaf;
+    otherwise the masses are shrunk toward the root distribution. A leaf with
+    invalid mass is a builder error and raises ValueError instead of inventing
+    a distribution. The public API validates X before this call.
     """
     ids = apply_nodes(X, nodes.left, nodes.right, nodes.feature,
                       nodes.threshold, nodes.missing_left)
@@ -173,7 +173,7 @@ def predict_proba_nodes(X, nodes, positive_leaf_probabilities=None,
 
 
 def finite_leaf_regions(nodes, n_features):
-    """Retorne caixas finitas de folhas, propagando limites pelos nós."""
+    """Return the finite boxes of the leaves, propagating bounds through the nodes."""
     regions = []
 
     def visit(node_id, lower, upper):
@@ -181,8 +181,8 @@ def finite_leaf_regions(nodes, n_features):
         if left == -1:
             possible = True
             for lo, hi in zip(lower, upper):
-                # O limite inferior vem de um filho direito (> limiar),
-                # portanto uma caixa com lo == hi não contém ponto finito.
+                # The lower bound comes from a right child (> threshold),
+                # so a box with lo == hi holds no finite point.
                 if not lo < hi:
                     possible = False
                     break
@@ -207,12 +207,12 @@ def finite_leaf_regions(nodes, n_features):
 def project_monotonic_leaf_probabilities(nodes, directions,
                                          positive_class_index,
                                          leaf_smoothing=0.0):
-    """Projete folhas para uma ordem global conservadora e determinística.
+    """Project leaves onto a conservative, deterministic global order.
 
-    Cada aresta compara duas caixas de folhas que se sobrepõem nas demais
-    features e são ordenadas na feature restrita. A propagação topológica
-    da maior probabilidade predecessora mantém a frequência empírica
-    sempre que possível e eleva apenas folhas que violariam a ordem.
+    Each edge compares two leaf boxes that overlap on the other features and
+    are ordered on the constrained feature. Topological propagation of the
+    largest predecessor probability keeps the empirical frequency whenever
+    possible and only raises leaves that would violate the order.
     """
     leaf_probabilities = np.zeros(len(nodes.left), dtype=np.float64)
     leaf_ids = np.flatnonzero(nodes.left == -1)
@@ -243,9 +243,9 @@ def project_monotonic_leaf_probabilities(nodes, directions,
                 for other in range(len(directions)):
                     if other == feature:
                         continue
-                    # As caixas são (lower, upper]. Tocar somente no
-                    # limite não é sobreposição: o ponto está fora de
-                    # uma delas e não pode justificar uma aresta.
+                    # Boxes are (lower, upper]. Touching only at the
+                    # bound is not an overlap: the point is outside
+                    # one of them and cannot justify an edge.
                     if (max(first_lower[other], second_lower[other])
                             >= min(first_upper[other], second_upper[other])):
                         overlaps_elsewhere = False

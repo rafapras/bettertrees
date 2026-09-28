@@ -19,13 +19,13 @@ from numba import njit, prange
 
 @njit(cache=True)
 def gini(class_weight):
-    """Calcule 1-sum(p_k**2) sobre massas não negativas; massa zero -> 0.
+    """Compute 1 - sum(p_k**2) over non-negative masses; zero mass -> 0.
 
-    Entrada interna float64[K], previamente validada. Não usar fastmath:
-    reordenações agressivas prejudicam comparações de ganho e NaN.
+    Internal float64[K] input, already validated. No fastmath: aggressive
+    reorderings harm gain comparisons and NaN handling.
     """
-    # Laços explícitos: a forma vetorizada aloca dois temporários por chamada,
-    # e o scan exact chama isto duas vezes por candidato.
+    # Explicit loops: the vectorized form allocates two temporaries per call,
+    # and the exact scan calls this twice per candidate.
     total = 0.0
     for k in range(class_weight.shape[0]):
         total += class_weight[k]
@@ -40,7 +40,7 @@ def gini(class_weight):
 
 @njit(cache=True)
 def precision_leaf_score(class_weight, positive_class, min_support):
-    """Retorne a precision da folha quando ela tem suporte suficiente."""
+    """Return the leaf precision when the leaf has enough support."""
     total = class_weight.sum()
     if total < min_support or total <= 0.0:
         return -np.inf
@@ -62,11 +62,12 @@ def precision_split_gain(parent_mass, left_mass, right_mass, positive_class,
 
 @njit(cache=True)
 def partition_samples(X, sample_indices, start, end, feature, threshold, missing_left):
-    """Particione IN PLACE apenas índices no intervalo [start,end).
+    """Partition IN PLACE only the indices in [start, end).
 
-    Retorna mid: esquerda=[start,mid), direita=[mid,end). Usa <= e a mesma
-    direção de NaN da previsão. Ordem interna instável; preserva a permutação
-    e o restante dos índices. X não muda. O builder verifica filhos válidos.
+    Returns mid: left = [start, mid), right = [mid, end). Uses <= and the same
+    NaN direction as prediction. The internal order is unstable; the
+    permutation and the other indices are preserved. X is not modified. The
+    builder checks that both children are valid.
     """
     left, right = start, end - 1
     while left <= right:
@@ -83,13 +84,13 @@ def partition_samples(X, sample_indices, start, end, feature, threshold, missing
 
 @njit(cache=True)
 def local_midpoint_threshold(X, sample_indices, start, end, feature, threshold):
-    """Ponto médio entre o maior valor à esquerda e o menor à direita NO NÓ.
+    """Midpoint between the largest value on the left and the smallest on the right IN THE NODE.
 
-    O hist escolhe cortes em bordas globais de bin; a partição de treino é a
-    mesma para qualquer limiar entre esses dois valores, mas valores de teste
-    ausentes do nó caem de lados diferentes. O ponto médio local é a convenção
-    do exact e do sklearn (margem máxima dentro do nó). Sem valor finito de um
-    dos lados, devolve o limiar recebido.
+    The hist engine picks cuts on global bin edges; the training partition is
+    the same for any threshold between those two values, but test values
+    absent from the node fall on different sides. The local midpoint is the
+    convention of the exact engine and of sklearn (maximum margin inside the
+    node). Without a finite value on one side, returns the given threshold.
     """
     left_max = -np.inf
     right_min = np.inf
@@ -110,13 +111,13 @@ def local_midpoint_threshold(X, sample_indices, start, end, feature, threshold):
 @njit(cache=True)
 def build_feature_histogram(column_bins, y, weights, sample_indices, start, end,
                             n_bins, n_classes):
-    """Some massas e contagens por bin de UMA feature, incluindo NaN no bin 0.
+    """Sum masses and counts per bin of ONE feature, including NaN in bin 0.
 
-    Entradas internas alinhadas: bins uint8[n], y int32[n], pesos float64[n],
-    índices int64. n_bins inclui 0; ids precisam estar em [0,n_bins).
-    Retorna (massas float64[n_bins,K], contagens int64[n_bins]). O splitter
-    futuro deve reusar buffers; esta referência aloca por chamada. Parar a
-    busca de thresholds NÃO elimina o custo O(n_node) desta acumulação.
+    Aligned internal inputs: bins uint8[n], y int32[n], weights float64[n],
+    int64 indices. n_bins includes bin 0; ids must be in [0, n_bins). Returns
+    (masses float64[n_bins, K], counts int64[n_bins]). This reference
+    allocates per call. Stopping the threshold scan does NOT remove the
+    O(n_node) cost of this accumulation.
     """
     mass = np.zeros((n_bins, n_classes), dtype=np.float64)
     count = np.zeros(n_bins, dtype=np.int64)
@@ -131,7 +132,7 @@ def build_feature_histogram(column_bins, y, weights, sample_indices, start, end,
 @njit(cache=True)
 def build_feature_histogram_into(column_bins, y, weights, sample_indices, start,
                                  end, n_bins, n_classes, mass, count):
-    """Preencha buffers de histograma já alocados e devolva suas fatias úteis."""
+    """Fill preallocated histogram buffers and return their used slices."""
     for bin_id in range(n_bins):
         count[bin_id] = 0
         for class_id in range(n_classes):
@@ -146,7 +147,7 @@ def build_feature_histogram_into(column_bins, y, weights, sample_indices, start,
 
 @njit(cache=True)
 def _node_class_mass(y, weights, sample_indices, start, end, n_classes):
-    """Some a massa de classes de um nó preservando a ordem do baseline."""
+    """Sum a node's class masses, keeping the baseline summation order."""
     mass = np.zeros(n_classes, dtype=np.float64)
     for pos in range(start, end):
         row = sample_indices[pos]
@@ -157,20 +158,21 @@ def _node_class_mass(y, weights, sample_indices, start, end, n_classes):
 @njit(cache=True)
 def remaining_gain_upper_bound(parent_mass, fixed_left_mass, fixed_right_mass,
                                parent_gini=-1.0):
-    """Limite superior admissível de Gini para TODOS os cortes ainda possíveis.
+    """Admissible Gini upper bound for ALL cuts still possible.
 
-    fixed_left/right são massas por classe irrevogavelmente destinadas a
-    cada filho em qualquer corte restante; não podem se sobrepor. Para uma
-    varredura crescente, o prefixo já percorrido é fixo à esquerda. Um sufixo
-    que nenhum corte admissível poderá mover fica fixo à direita. Fixar a
-    direção de NaN antes de calcular; usar o máximo dos dois limites se ambas
-    as direções ainda forem candidatas. Avaliar corte só-NaN separadamente.
+    fixed_left/right are per-class masses irrevocably assigned to each child
+    by any remaining cut; they cannot overlap. For an increasing scan, the
+    prefix already scanned is fixed on the left. A suffix that no admissible
+    cut can move is fixed on the right. Fix the NaN direction before computing;
+    take the maximum of both bounds if both directions are still candidates.
+    Evaluate the NaN-only cut separately.
 
-    Defina Q(c)=sum(c)*Gini(c). Como Q(c+d)>=Q(c) para d>=0, o ganho futuro
-    é <= Gini(parent) - [Q(fixed_left)+Q(fixed_right)]/W_parent. Isso relaxa
-    a restrição de ordem dos bins: pode ser frouxo, mas não presume que a
-    sequência de ganhos seja monótona. Contrato interno: massas válidas e
-    W_parent>0. Fórmula válida em aritmética real; use guarda numérica abaixo.
+    Let Q(c) = sum(c) * Gini(c). Since Q(c + d) >= Q(c) for d >= 0, the future
+    gain is <= Gini(parent) - [Q(fixed_left) + Q(fixed_right)] / W_parent. This
+    relaxes the bin-order constraint: it may be loose, but it does not assume
+    that the gain sequence is monotone. Internal contract: valid masses and
+    W_parent > 0. The formula holds in real arithmetic; see the numeric guard
+    below.
     """
     total = parent_mass.sum()
     if total <= 0:
@@ -183,15 +185,15 @@ def remaining_gain_upper_bound(parent_mass, fixed_left_mass, fixed_right_mass,
 
 @njit(cache=True)
 def cannot_improve(upper_bound, incumbent_gain, n_classes, gain_tolerance=0.0):
-    """Decida parar a varredura por bound, com folga contra arredondamento.
+    """Decide whether to stop the scan by the bound, with slack for rounding.
 
-    incumbent_gain precisa vir de um corte JÁ admissível (suporte e pesos).
-    Sem incumbente (-inf), nunca para. gain_tolerance=0 preserva o máximo
-    teórico; tolerância >0 permite perder no máximo esse ganho LOCAL frente
-    ao melhor corte da mesma discretização, se todos os descartes usarem o
-    bound correto. Não garante acurácia, log loss ou árvore global equivalente.
-    Usa comparação estrita e guarda 64*K*eps em unidades de Gini; a guarda é
-    de engenharia, não uma certificação formal de erro em ponto flutuante.
+    incumbent_gain must come from an ALREADY admissible cut (support and
+    weights). Without an incumbent (-inf) it never stops. gain_tolerance=0
+    keeps the theoretical maximum; a tolerance > 0 may lose at most that LOCAL
+    gain against the best cut of the same discretization, provided every
+    discard uses the correct bound. It does not guarantee accuracy, log-loss or
+    an equivalent global tree. Uses a strict comparison and a 64*K*eps guard in
+    Gini units; the guard is engineering, not a formal floating-point proof.
     """
     if not np.isfinite(incumbent_gain):
         return False
@@ -231,7 +233,7 @@ def _hist_candidate_gain(parent_mass, left_mass, right_mass, parent_total,
 def _scan_histogram_feature_numba(mass, count, parent_mass, min_samples_leaf,
                                   incumbent_gain, stopping_code, gain_tolerance,
                                   bound_interval, parent_impurity):
-    """Kernel escalar da varredura; não aloca arrays por candidato."""
+    """Scalar scan kernel; allocates no array per candidate."""
     n_finite_bins = mass.shape[0] - 1
     n_classes = mass.shape[1]
     total_rows = 0
@@ -284,9 +286,9 @@ def _scan_histogram_feature_numba(mass, count, parent_mass, min_samples_leaf,
             if missing_count == 0 and direction == 1:
                 continue
             if prefix_count == 0 or prefix_count == total_rows - missing_count:
-                # Prefixo finito vazio ou completo NO NÓ: a partição repete o
-                # corte só-NaN (ou deixa um lado vazio). Pular mantém o corte
-                # canônico, como no motor exato.
+                # Empty or complete finite prefix IN THE NODE: the partition repeats the
+                # NaN-only cut (or leaves a side empty). Skipping keeps the canonical
+                # cut, as in the exact engine.
                 continue
             missing_left = direction == 1
             left_count = prefix_count + (missing_count if missing_left else 0)
@@ -358,7 +360,7 @@ def _scan_histogram_feature_numba(mass, count, parent_mass, min_samples_leaf,
 def _scan_histogram_feature_precision_numba(
         mass, count, parent_mass, min_samples_leaf, positive_class,
         min_precision, min_support):
-    """Varra cortes pela melhor precision filha menos a do pai, sem bound."""
+    """Scan cuts by the best child precision minus the parent's, without a bound."""
     n_finite_bins = mass.shape[0] - 1
     n_classes = mass.shape[1]
     total_rows = 0
@@ -400,9 +402,9 @@ def _scan_histogram_feature_precision_numba(
             if missing_count == 0 and direction == 1:
                 continue
             if prefix_count == 0 or prefix_count == total_rows - missing_count:
-                # Prefixo finito vazio ou completo NO NÓ: a partição repete o
-                # corte só-NaN (ou deixa um lado vazio). Pular mantém o corte
-                # canônico, como no motor exato.
+                # Empty or complete finite prefix IN THE NODE: the partition repeats the
+                # NaN-only cut (or leaves a side empty). Skipping keeps the canonical
+                # cut, as in the exact engine.
                 continue
             missing_left = direction == 1
             left_count = prefix_count + (missing_count if missing_left else 0)
@@ -436,7 +438,7 @@ def _scan_histogram_feature_numba_scratch(
         mass, count, parent_mass, min_samples_leaf, incumbent_gain,
         stopping_code, gain_tolerance, bound_interval, parent_impurity,
         prefix, left, right, fixed_left, fixed_right):
-    """Versão da varredura que reutiliza scratch entre features do mesmo nó."""
+    """Scan variant that reuses scratch buffers across the features of one node."""
     n_finite_bins = mass.shape[0] - 1
     n_classes = mass.shape[1]
     total_rows = 0
@@ -486,9 +488,9 @@ def _scan_histogram_feature_numba_scratch(
             if missing_count == 0 and direction == 1:
                 continue
             if prefix_count == 0 or prefix_count == total_rows - missing_count:
-                # Prefixo finito vazio ou completo NO NÓ: a partição repete o
-                # corte só-NaN (ou deixa um lado vazio). Pular mantém o corte
-                # canônico, como no motor exato.
+                # Empty or complete finite prefix IN THE NODE: the partition repeats the
+                # NaN-only cut (or leaves a side empty). Skipping keeps the canonical
+                # cut, as in the exact engine.
                 continue
             missing_left = direction == 1
             left_count = prefix_count + (missing_count if missing_left else 0)
@@ -562,7 +564,7 @@ def _scan_histograms_row_major_numba(mass, count, finite_edge_lengths,
                                      min_samples_leaf, stopping_code,
                                      gain_tolerance, bound_interval,
                                      parent_impurity):
-    """Varra todas as features de um nó em uma única chamada Numba."""
+    """Scan every feature of a node in a single Numba call."""
     best_feature = -1
     best_bin = -1
     best_missing_left = False
@@ -610,12 +612,12 @@ def _scan_histograms_row_major_parallel_numba(
         mass, count, finite_edge_lengths, feature_order, parent_mass,
         min_samples_leaf, stopping_code, gain_tolerance, bound_interval,
         parent_impurity):
-    """Varra features em paralelo e reduz o melhor corte em ordem estável.
+    """Scan features in parallel and reduce to the best cut in a stable order.
 
-    O bound paralelo não usa o ganho da feature anterior como incumbente,
-    porque as features são independentes. Isso só pode deixar mais candidatos
-    por avaliar; cada feature ainda é varrida com o seu próprio bound exato,
-    e a redução final preserva ``feature_order`` como desempate.
+    The parallel bound does not use the previous feature's gain as incumbent,
+    because the features are independent. This can only leave more candidates
+    to evaluate; each feature is still scanned with its own exact bound, and
+    the final reduction keeps ``feature_order`` as the tie-breaker.
     """
     n_features = len(feature_order)
     n_classes = parent_mass.shape[0]
@@ -675,7 +677,7 @@ def _scan_histograms_row_major_parallel_numba(
 def _scan_exact_feature_gini_numba(ordered_values, ordered_y, ordered_weights,
                                    parent_mass, missing_mass, total_rows,
                                    min_samples_leaf, parent_impurity):
-    """Varra cortes finitos de uma feature já ordenada, sem voltar a Python."""
+    """Scan the finite cuts of an already sorted feature without returning to Python."""
     n_classes = len(parent_mass)
     finite_count = len(ordered_values)
     missing_count = total_rows - finite_count
@@ -750,7 +752,7 @@ _MAGNITUDE_BITS = np.uint32(0x7FFFFFFF)
 
 @njit(cache=True)
 def _float32_sort_key(bits):
-    """Chave uint32 com a mesma ordem do float32 (sem NaN); -0.0 vira 0.0."""
+    """uint32 key with the same order as float32 (no NaN); -0.0 becomes 0.0."""
     if (bits & _MAGNITUDE_BITS) == 0:
         return _SIGN_BIT
     if bits & _SIGN_BIT:
@@ -770,13 +772,14 @@ def _float32_from_sort_key(key):
 
 @njit(cache=True)
 def _stable_sort_keys(keys, order, keys_tmp, order_tmp, counts):
-    """Ordene (keys, order) por keys de forma ESTÁVEL; devolva os arrays.
+    """Sort (keys, order) by keys STABLY; return the arrays.
 
-    Radix LSD (dígitos de 8 bits em nós pequenos, 11 bits nos grandes) com as
-    contagens de todas as passadas numa só varredura; passada com dígito
-    único é pulada. Até 32 linhas, inserção. Estável é o que garante somar a
-    massa dos empates na ordem de ``rows``. ``counts`` precisa de 3*2048.
-    O resultado pode estar nos buffers ``*_tmp``: use os arrays devolvidos.
+    LSD radix sort (8-bit digits on small nodes, 11-bit on large ones) with the
+    counts of every pass computed in a single scan; a pass with a single digit
+    value is skipped. Up to 32 rows, insertion sort. Stability is what
+    guarantees that tied masses are summed in the order of ``rows``.
+    ``counts`` needs 3*2048 entries. The result may live in the ``*_tmp``
+    buffers: use the returned arrays.
     """
     n = keys.shape[0]
     if n <= _INSERTION_MAX_ROWS:
@@ -831,21 +834,20 @@ def _stable_sort_keys(keys, order, keys_tmp, order_tmp, counts):
 def _find_best_split_exact_gini_numba(X, y, weights, rows, feature_order,
                                       parent_mass, min_samples_leaf,
                                       parent_impurity):
-    """Busca exata do nó inteiro: coleta, ordena e varre cada feature.
+    """Exact search over a whole node: gather, sort and scan every feature.
 
-    Mesma semântica de ``_scan_exact_feature_gini_numba`` aplicada à ordem do
-    mergesort estável: as chaves uint32 preservam a ordem dos float32 (com
-    -0.0 igual a 0.0) e a ordenação é estável, então empates acumulam massa
-    na mesma ordem de ``rows``.
+    Same semantics as ``_scan_exact_feature_gini_numba`` applied to the order
+    of a stable mergesort: the uint32 keys preserve the float32 order (with
+    -0.0 equal to 0.0) and the sort is stable, so ties accumulate mass in the
+    order of ``rows``.
 
-    O scan ordena candidatos por ``sum(l_k^2)/L + sum(r_k^2)/R``, que é o
-    ganho Gini a menos de constantes do nó, e só recalcula o ganho pela
-    fórmula de referência (``gini`` das duas massas) quando a pontuação fica
-    a menos de 1e-10*W do melhor da feature. Longe disso o ganho de
-    referência é estritamente menor e não mudaria a escolha; perto disso a
-    decisão é a da fórmula de referência, então o resultado é idêntico.
-    Retorna (feature, threshold, missing_left, gain, n_left, avaliados,
-    linhas NaN varridas).
+    The scan ranks candidates by ``sum(l_k^2)/L + sum(r_k^2)/R``, which is the
+    Gini gain up to node constants, and only recomputes the gain with the
+    reference formula (``gini`` of both masses) when the score is within
+    1e-10*W of the feature's best. Farther away the reference gain is strictly
+    smaller and would not change the choice; closer, the decision is the
+    reference formula's, so the result is identical. Returns (feature,
+    threshold, missing_left, gain, n_left, evaluated, NaN rows scanned).
     """
     n = rows.shape[0]
     n_classes = parent_mass.shape[0]
@@ -982,7 +984,7 @@ def _scan_exact_feature_precision_numba(
         ordered_values, ordered_y, ordered_weights, parent_mass,
         missing_mass, total_rows, min_samples_leaf, positive_class,
         min_support):
-    """Varra cortes para precision sem despachar um kernel por candidato."""
+    """Scan cuts for precision without dispatching one kernel per candidate."""
     n_classes = len(parent_mass)
     finite_count = len(ordered_values)
     missing_count = total_rows - finite_count
@@ -1046,7 +1048,7 @@ def _scan_exact_feature_precision_numba(
 @njit(cache=True)
 def _build_all_histograms_row_major(X_binned, y, weights, sample_indices,
                                     start, end, n_features, max_bins, n_classes):
-    """Acumule todos os histogramas lendo cada linha de bins uma única vez."""
+    """Accumulate every histogram reading each row of bins only once."""
     mass = np.zeros((n_features, max_bins, n_classes), dtype=np.float64)
     count = np.zeros((n_features, max_bins), dtype=np.int64)
     for pos in range(start, end):
@@ -1064,7 +1066,7 @@ def _build_all_histograms_row_major(X_binned, y, weights, sample_indices,
 def _build_all_histograms_feature_parallel(X_binned, y, weights, sample_indices,
                                            start, end, n_features, max_bins,
                                            n_classes):
-    """Acumule features em paralelo, com uma saída exclusiva por feature."""
+    """Accumulate features in parallel, with one exclusive output per feature."""
     mass = np.zeros((n_features, max_bins, n_classes), dtype=np.float64)
     count = np.zeros((n_features, max_bins), dtype=np.int64)
     for feature in prange(n_features):
@@ -1079,11 +1081,11 @@ def _build_all_histograms_feature_parallel(X_binned, y, weights, sample_indices,
 
 @njit(cache=True)
 def apply_nodes(X, left, right, feature, threshold, missing_left):
-    """Percorra uma árvore válida e retorne id da folha por linha (int32).
+    """Walk a valid tree and return the leaf id of each row (int32).
 
-    Contrato interno: X float32 validado; arrays descrevem árvore acíclica,
-    conectada, com raiz 0 e filhos válidos. Igualdade segue para a esquerda;
-    NaN segue direção gravada no treino. Compartilhado pelos dois motores.
+    Internal contract: validated float32 X; the arrays describe an acyclic,
+    connected tree with root 0 and valid children. Equality goes left; NaN
+    follows the direction stored at training. Shared by both engines.
     """
     result = np.empty(len(X), dtype=np.int32)
     for i in range(len(X)):
@@ -1099,22 +1101,21 @@ def _solve_depth2_block_hist_numba(X_binned, y, weights, rows,
                                    finite_edge_lengths, feature_order,
                                    n_classes, max_bins, min_samples_leaf,
                                    candidate_limit):
-    """Bloco depth 2 inteiro (raiz hist + filhos hist) numa chamada Numba.
+    """Whole depth-2 block (hist root + hist children) in one Numba call.
 
-    Para cada feature f da raiz, um histograma conjunto
-    pair[bin_f, g, bin_g, classe] (uma passada nas linhas do nó) dá o
-    histograma do filho esquerdo de qualquer limiar de f como soma de
-    prefixos; o direito sai por subtração do histograma do nó. Os filhos são
-    varridos por ``_scan_histograms_row_major_numba``, o mesmo kernel da busca
-    gulosa. Ordem dos candidatos e desempates iguais aos de
-    ``multilevel._candidate_roots`` + ``_solve_block``. Exige pesos
-    unitários: as massas são inteiros exatos, então subtrações e somas em
-    outra ordem não mudam nenhum ganho.
+    For each root feature f, a joint histogram pair[bin_f, g, bin_g, class]
+    (one pass over the node's rows) gives the left child's histogram for any
+    threshold of f as a prefix sum; the right child comes from subtracting it
+    from the node histogram. The children are scanned by
+    ``_scan_histograms_row_major_numba``, the same kernel as the greedy search.
+    Candidate order and tie-breaking match ``multilevel._candidate_roots`` +
+    ``_solve_block``. Requires unit weights: masses are exact integers, so
+    subtractions and sums in a different order change no gain.
 
-    Retorna (candidatos, raiz[7], esquerda[5], direita[5]) com raiz =
-    (feature, bin, é_só_NaN, missing_left, ganho, n_left, achou) e filhos =
-    (feature, bin, missing_left, ganho, n_left); feature=-1 = sem corte.
-    candidatos = -1 se ``candidate_limit`` foi excedido.
+    Returns (candidates, root[7], left[5], right[5]) with root = (feature, bin,
+    nan_only, missing_left, gain, n_left, found) and children = (feature, bin,
+    missing_left, gain, n_left); feature=-1 means no cut. candidates = -1 if
+    ``candidate_limit`` was exceeded.
     """
     n = rows.shape[0]
     n_features = X_binned.shape[1]
@@ -1172,10 +1173,10 @@ def _solve_depth2_block_hist_numba(X_binned, y, weights, rows,
         finite_rows = n - missing_rows
         pre_mass[:] = 0.0
         pre_count[:] = 0
-        # Partição repetida (limiar em bin vazio no nó, ou só-NaN igual ao
-        # último limiar) é descartada como em ``_candidate_roots``: a parte
-        # finita à esquerda cresce com o limiar, então basta comparar com o
-        # candidato anterior da mesma direção.
+        # A repeated partition (threshold on a bin empty in the node, or NaN-only
+        # equal to the last threshold) is discarded as in ``_candidate_roots``: the
+        # finite left part grows with the threshold, so comparing with the previous
+        # candidate of the same direction is enough.
         previous_finite_left = np.full(2, -1, dtype=np.int64)
         n_thresholds = n_edges + (1 if has_missing and finite_rows > 0 else 0)
         for t in range(n_thresholds):
@@ -1195,7 +1196,7 @@ def _solve_depth2_block_hist_numba(X_binned, y, weights, rows,
                     continue
                 previous_finite_left[direction] = finite_left
                 if only_missing:
-                    # finitos à esquerda, NaN à direita
+                    # finite values left, NaN right
                     for g in range(n_features):
                         for b in range(max_bins):
                             l_count[g, b] = node_count[g, b] - pair_count[0, g, b]

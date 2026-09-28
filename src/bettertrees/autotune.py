@@ -22,9 +22,9 @@ from sklearn.utils.validation import check_is_fitted
 from .estimator import FastDecisionTreeClassifier
 from .postprocess import expansion_steps, hierarchical_shrinkage_probabilities, prefix_leaf_ids
 
-# Grade larga: o sklearn + HS tunado escolhe > 256 folhas e λ > 200 com frequência;
-# parar em 256/200 custava 0,7% de log-loss (MENSURACAO_CAPACIDADE_PENDENTE.md).
-# Folhas além de n/min_samples_leaf não são alcançadas, então o custo em n pequeno é nulo.
+# Wide grid: tuned sklearn + HS often picks > 256 leaves and lambda > 200;
+# stopping at 256/200 cost 0.7% log-loss in the benchmark.
+# Leaves beyond n/min_samples_leaf are never reached, so small n pays nothing.
 DEFAULT_LEAVES = (4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096)
 DEFAULT_SHRINKAGE = (1.0, 5.0, 20.0, 50.0, 200.0, 500.0, 1000.0)
 
@@ -35,19 +35,19 @@ def _log_loss(y, proba, weights):
 
 
 class FastDecisionTreeClassifierCV(ClassifierMixin, BaseEstimator):
-    """Árvore best-first com número de folhas e shrinkage escolhidos por CV.
+    """Best-first tree whose number of leaves and shrinkage are chosen by CV.
 
     Parameters
     ----------
-    leaves_grid : sequência de inteiros >= 2
-        Capacidades candidatas (máximo de folhas).
-    shrinkage_grid : sequência de floats > 0
-        Valores de ``leaf_shrinkage`` candidatos.
+    leaves_grid : sequence of int >= 2
+        Candidate capacities (maximum number of leaves).
+    shrinkage_grid : sequence of float > 0
+        Candidate ``leaf_shrinkage`` values.
     cv : int >= 2
-        Folds internos estratificados; o critério é o log-loss de validação.
+        Stratified inner folds; the criterion is the validation log-loss.
     min_samples_leaf, splitter, max_bins, n_jobs, random_state
-        Repassados ao ``FastDecisionTreeClassifier`` (sem poda: a
-        truncagem por prefixo exige ids na ordem de expansão).
+        Passed to ``FastDecisionTreeClassifier`` (no pruning: truncating by
+        prefix needs node ids in expansion order).
     """
 
     def __init__(self, *, leaves_grid=DEFAULT_LEAVES, shrinkage_grid=DEFAULT_SHRINKAGE,
@@ -90,7 +90,7 @@ class FastDecisionTreeClassifierCV(ClassifierMixin, BaseEstimator):
                 X[fit_rows], y[fit_rows], sample_weight=weights[fit_rows])
             nodes = model.nodes_
             steps = expansion_steps(nodes)
-            # Classes ausentes no fold interno: coluna com probabilidade ~0.
+            # Classes missing from the inner fold: column with probability ~0.
             columns = np.searchsorted(classes, model.classes_)
             X_val = model._validate_predict_X(X[val_rows])
             y_val, w_val = encoded[val_rows], weights[val_rows]

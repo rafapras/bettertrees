@@ -44,51 +44,51 @@ def _log_loss(y, m, w):
 
 
 class AdditiveTreeBooster(InterpretableSumMixin, ClassifierMixin, BaseEstimator):
-    """Soma longa de árvores Newton ótimas rasas (d1/d2), com early stopping.
+    """Long sum of shallow optimal Newton trees (depth 1/2), with early stopping.
 
-    Capacidade livre com estrutura simples: cada termo é uma árvore de até dois
-    cortes (efeito principal ou par de features) somada ao logit. A cada
-    rodada, a árvore ótima no resíduo (busca exaustiva nos bins), folhas por
-    passo de Newton × ``learning_rate``; para quando a log-loss da validação
-    interna não melhora em ``patience`` rodadas.
+    Free capacity with a simple structure: each term is a tree with at most two
+    cuts (a main effect or a pair of features) added to the logit. Every round
+    fits the optimal tree on the residual (exhaustive search over bins), with
+    leaves set by a Newton step times ``learning_rate``; it stops when the
+    internal validation log-loss has not improved for ``patience`` rounds.
 
     Parameters
     ----------
     depth : {1, 2}, default=2
-        Profundidade de cada termo.
+        Depth of each term.
     learning_rate : float, default=0.3
-        Shrinkage dos valores das folhas.
+        Shrinkage of the leaf values.
     max_rounds : int, default=300
-        Máximo de termos.
+        Maximum number of terms.
     lam : float, default=1.0
-        Regularização L2 das folhas (no ganho e no passo de Newton).
+        L2 regularization of the leaves (in the gain and the Newton step).
     min_weight : float, default=20.0
-        Massa (hessiana) mínima por folha.
+        Minimum hessian mass per leaf.
     max_bins : int, default=32
-        Bins por feature.
+        Bins per feature.
     validation_fraction : float, default=0.15
-        Fração das linhas para o early stopping (0 desliga).
+        Share of rows used for early stopping (0 disables it).
     patience : int, default=20
-        Rodadas sem melhora antes de parar.
+        Rounds without improvement before stopping.
     max_features_d2 : int, default=128
-        Com mais features, a busca d2 usa as de maior importância (triagem).
+        With more features, the depth-2 search uses the most important ones.
     feature_screen : {"lgbm", "fast"}, default="lgbm"
-        Triagem: importância de ganho do LightGBM ou FAST por rodada.
+        Screening: LightGBM gain importance or FAST scores every round.
     random_state : int, default=0
-        Semente do sorteio da validação.
+        Seed of the validation split.
 
     Attributes
     ----------
     trees_ : list of SmallTree
-        Os termos como árvores (ver ``get_trees`` para os valores reais).
+        The terms as trees (see ``get_trees`` for real thresholds).
     terms_ : list
-        Representação interna compacta dos termos (bins).
+        Compact internal representation of the terms (bins).
     base_margin_ : float
-        Logit constante inicial.
+        Initial constant logit.
     classes_, n_features_in_, feature_names_in_, bin_edges_, nan_features_
-        Convenções do sklearn e dos bins.
+        scikit-learn and binning conventions.
     history_ : ndarray
-        Log-loss de validação por rodada.
+        Validation log-loss per round.
     """
 
     def __init__(self, *, depth=2, learning_rate=0.3, max_rounds=300, lam=1.0,
@@ -116,7 +116,7 @@ class AdditiveTreeBooster(InterpretableSumMixin, ClassifierMixin, BaseEstimator)
             return (f, int(cuts[f]), -1, -1, -1, -1)
         feats = (self._fixed_feats if self.feature_screen == "lgbm" else
                  top_features(Xb, g, h, w, nb, self.lam, self.min_weight, self.max_features_d2))
-        if feats is not None:  # muitas features: d2 ótima dentro do top-k
+        if feats is not None:  # many features: optimal depth 2 within the top k
             Xs = np.ascontiguousarray(Xb[:, feats])
             gains, res = best_depth2(Xs, g, h, w, np.ascontiguousarray(nb[feats]), self.lam,
                                      self.min_weight)
@@ -133,20 +133,20 @@ class AdditiveTreeBooster(InterpretableSumMixin, ClassifierMixin, BaseEstimator)
         return (f1, *[int(v) for v in res[f1]])
 
     def fit(self, X, y, sample_weight=None, y_soft=None):
-        """Ajusta a soma.
+        """Fit the sum.
 
         Parameters
         ----------
-        X : array-like ou DataFrame, shape (n, p)
-            Features numéricas; NaN é aceito (vai sempre para o lado ``<=``).
-            Com DataFrame, os nomes das colunas viram ``feature_names_in_``.
-        y : array-like, shape (n,)
-            Rótulos de duas classes.
-        sample_weight : array-like, shape (n,), opcional
-            Pesos não negativos das linhas.
-        y_soft : array-like, shape (n,), opcional
-            Alvo suave em [0, 1] (ex.: probabilidade de um professor) no lugar
-            de y; ``classes_`` continua vindo de y.
+        X : array-like or DataFrame of shape (n_samples, n_features)
+            Numeric features; NaN is accepted (it always goes to the ``<=`` side).
+            With a DataFrame, the column names become ``feature_names_in_``.
+        y : array-like of shape (n_samples,)
+            Labels of two classes.
+        sample_weight : array-like of shape (n_samples,), optional
+            Non-negative row weights.
+        y_soft : array-like of shape (n_samples,), optional
+            Soft target in [0, 1] (e.g. a teacher's probability) used instead
+            of y; ``classes_`` still comes from y.
 
         Returns
         -------
@@ -203,7 +203,7 @@ class AdditiveTreeBooster(InterpretableSumMixin, ClassifierMixin, BaseEstimator)
         return self
 
     def _terms_to_trees(self):
-        """Termos como SmallTree (folhas 0–1 à esquerda, 2–3 à direita)."""
+        """Terms as SmallTree (leaves 0-1 on the left, 2-3 on the right)."""
         trees = []
         for (f1, t1, fl, tl, fr, tr), values in self.terms_:
             tree = SmallTree.from_nested((f1, t1, _side(fl, tl), _side(fr, tr)))
@@ -217,7 +217,7 @@ class AdditiveTreeBooster(InterpretableSumMixin, ClassifierMixin, BaseEstimator)
         return trees
 
     def decision_function(self, X):
-        """Logit de ``P(y = classes_[1])``: base + soma dos termos."""
+        """Logit of ``P(y = classes_[1])``: base plus the sum of the terms."""
         Xb = rebin(predict_input(self, X, "terms_"), self.bin_edges_)
         m = np.full(len(Xb), self.base_margin_)
         for spec, values in self.terms_:
@@ -225,10 +225,10 @@ class AdditiveTreeBooster(InterpretableSumMixin, ClassifierMixin, BaseEstimator)
         return m
 
     def scorecard(self, feature_names=None):
-        """Termos legíveis: lista de (regra, valor no logit) por folha de cada termo.
+        """Readable terms: a list of (rule, logit value) per leaf of each term.
 
-        Folhas idênticas de um lado sem corte aparecem uma vez. ``x <= v``
-        inclui NaN (NaN vai sempre para a esquerda).
+        Identical leaves on a side without a cut appear once. ``x <= v``
+        includes NaN (NaN always goes left).
         """
         check_is_fitted(self, "terms_")
         name = (lambda j: feature_names[j]) if feature_names is not None else (lambda j: f"x{j}")

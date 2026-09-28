@@ -35,12 +35,13 @@ TEACHER_DEFAULTS = dict(n_estimators=2000, learning_rate=0.05, num_leaves=31,
 def crossfit_teacher(X, y, *, n_splits=5, random_state=0, params=None,
                      early_stopping_fraction=0.15, return_models=False,
                      folds=None):
-    """Probabilidade OOF da classe positiva (maior rótulo) por LightGBM.
+    """Out-of-fold probability of the positive class (largest label) from LightGBM.
 
-    Dentro de cada fold de treino, ``early_stopping_fraction`` vira validação
-    do early stopping. ``folds`` (n,) fixa a partição (ex.: a mesma entre
-    braços de um experimento); ``None`` usa StratifiedKFold. Devolve dict com
-    ``p`` (n,), ``fold`` (n,), ``best_iterations`` e, se pedido, ``models``.
+    Inside each training fold, ``early_stopping_fraction`` becomes the early
+    stopping validation set. ``folds`` (n,) fixes the partition (e.g. the same
+    across the arms of an experiment); ``None`` uses StratifiedKFold. Returns a
+    dict with ``p`` (n,), ``fold`` (n,), ``best_iterations`` and, if requested,
+    ``models``.
     """
     import lightgbm as lgb
 
@@ -79,10 +80,10 @@ def crossfit_teacher(X, y, *, n_splits=5, random_state=0, params=None,
 
 
 def soft_label_expand(X, p, sample_weight=None):
-    """(X2, y2, w2): X duplicado, y2 = [1…, 0…], w2 = [w·p, w·(1−p)].
+    """(X2, y2, w2): X duplicated, y2 = [1..., 0...], w2 = [w*p, w*(1-p)].
 
-    Linhas com peso zero são descartadas pelo motor; com p ∈ {0, 1} o
-    resultado é exatamente o dado original.
+    Zero-weight rows are dropped by the engine; with p in {0, 1} the result is
+    exactly the original data.
     """
     X = as_float_matrix(X)
     n = len(X)
@@ -95,12 +96,12 @@ def soft_label_expand(X, p, sample_weight=None):
 
 
 def restate_leaf_masses(model, X, y, sample_weight=None):
-    """Reescreva ``class_weight``/``n_samples`` de todos os nós com (X, y) reais.
+    """Rewrite ``class_weight``/``n_samples`` of every node from the real (X, y).
 
-    ``y`` em índices de ``model.classes_``-compatíveis (mesmos rótulos).
-    Recalcula ``leaf_probabilities_`` se o modelo usa shrinkage hierárquico.
-    Nós sem nenhuma linha herdam a massa do pai (não aparecem na previsão
-    com os mesmos dados, mas mantêm a árvore válida).
+    ``y`` uses labels compatible with ``model.classes_``. Recomputes
+    ``leaf_probabilities_`` if the model uses hierarchical shrinkage. Nodes
+    that receive no rows inherit the parent's mass (they never show up when
+    predicting on the same data, but the tree stays valid).
     """
     check_is_fitted(model, "nodes_")
     nodes = model.nodes_
@@ -114,7 +115,7 @@ def restate_leaf_masses(model, X, y, sample_weight=None):
     ns = np.zeros_like(nodes.n_samples)
     np.add.at(cw, (leaves, cls), w)
     np.add.at(ns, leaves, 1)
-    order = []  # pós-ordem iterativa
+    order = []  # iterative post-order
     stack = [0]
     while stack:
         node = stack.pop()
@@ -125,7 +126,7 @@ def restate_leaf_masses(model, X, y, sample_weight=None):
         if nodes.left[node] != -1:
             cw[node] = cw[nodes.left[node]] + cw[nodes.right[node]]
             ns[node] = ns[nodes.left[node]] + ns[nodes.right[node]]
-    for node in order:  # pais antes dos filhos
+    for node in order:  # parents before children
         if cw[node].sum() <= 0:
             parent = np.flatnonzero((nodes.left == node) | (nodes.right == node))
             cw[node] = cw[parent[0]] if len(parent) else nodes.class_weight[node]
@@ -138,10 +139,10 @@ def restate_leaf_masses(model, X, y, sample_weight=None):
 
 def fit_tree_on_target(X, y, p, target, *, leaf_target="y", sample_weight=None,
                        classes=None, **tree_params):
-    """Árvore no alvo ``'y'`` (rótulo) ou ``'p'`` (suave); folhas em ``leaf_target``.
+    """Tree on the ``'y'`` (label) or ``'p'`` (soft) target; leaves on ``leaf_target``.
 
-    ``classes``: os dois rótulos globais (necessário quando o subconjunto de y
-    tem uma classe só e o alvo é suave).
+    ``classes``: the two global labels (needed when the subset of y has a
+    single class and the target is soft).
     """
     X = as_float_matrix(X)
     if target == "y":
@@ -162,12 +163,12 @@ def fit_tree_on_target(X, y, p, target, *, leaf_target="y", sample_weight=None,
 
 
 class MixedDepthTree(ClassifierMixin, BaseEstimator):
-    """Topo (``top_depth`` níveis) num alvo, fundo no outro; binário.
+    """Top (``top_depth`` levels) fitted on one target, bottom on the other; binary.
 
-    ``fit(X, y, p)``: ``p`` é a probabilidade OOF do professor. As folhas
-    finais são estimadas em ``leaf_target``. Cada subárvore do fundo é uma
-    ``FastDecisionTreeClassifier`` de profundidade ``depth − top_depth`` sobre
-    as linhas da folha do topo (bins reaprendidos nessas linhas).
+    ``fit(X, y, p)``: ``p`` is the teacher's out-of-fold probability. The final
+    leaves are estimated on ``leaf_target``. Each bottom subtree is a
+    ``FastDecisionTreeClassifier`` of depth ``depth - top_depth`` on the rows of
+    its top leaf (bins re-learned on those rows).
     """
 
     def __init__(self, *, depth=6, top_depth=3, top_target="p",
@@ -201,7 +202,7 @@ class MixedDepthTree(ClassifierMixin, BaseEstimator):
             for leaf in np.unique(leaves):
                 rows = leaves == leaf
                 if len(np.unique(y[rows])) < 2 and self.bottom_target == "y":
-                    continue  # folha pura: nada a cortar
+                    continue  # pure leaf: nothing to cut
                 sub = fit_tree_on_target(X[rows], y[rows], p[rows], self.bottom_target,
                                          leaf_target=self.leaf_target,
                                          sample_weight=w[rows], classes=self.classes_,

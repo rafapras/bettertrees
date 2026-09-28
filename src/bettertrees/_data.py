@@ -12,12 +12,12 @@ from sklearn.utils.multiclass import check_classification_targets
 
 
 class NodeArrays(NamedTuple):
-    """Arrays contíguos; raiz 0, filhos -1 em folhas, feature -1 em folhas.
+    """Contiguous arrays; root 0, children -1 at leaves, feature -1 at leaves.
 
-    Cada posição identifica um nó. class_weight tem shape (capacidade, K)
-    e contém massas por classe, não probabilidades. Nenhuma folha publicada
-    pode ter massa total zero. threshold é float64; X é float32.
-    O builder retorna arrays recortados aos nós efetivamente usados.
+    Each position identifies a node. class_weight has shape (capacity, K) and
+    holds per-class masses, not probabilities. No published leaf may have zero
+    total mass. threshold is float64; X is float32. The builder returns the
+    arrays trimmed to the nodes actually used.
     """
 
     left: np.ndarray
@@ -30,12 +30,12 @@ class NodeArrays(NamedTuple):
 
 
 class Split(NamedTuple):
-    """Melhor corte: feature=-1 indica ausência de corte admissível.
+    """Best cut: feature=-1 means there is no admissible cut.
 
-    gain é a redução LOCAL de Gini; o builder pondera pela massa relativa
-    à raiz ao aplicar min_impurity_decrease. threshold sempre usa a escala
-    original; bin_threshold=-1 no motor exato. n_left conta linhas ativas,
-    independentemente da magnitude de seus pesos positivos.
+    gain is the LOCAL Gini decrease; the builder weights it by the mass
+    relative to the root when applying min_impurity_decrease. threshold is
+    always on the original scale; bin_threshold=-1 in the exact engine. n_left
+    counts active rows regardless of the magnitude of their positive weights.
     """
 
     feature: int
@@ -47,11 +47,11 @@ class Split(NamedTuple):
 
 
 def validate_X(X, *, n_features=None):
-    """Converta matriz numérica densa em float32 C-contiguous, permitindo NaN.
+    """Convert a dense numeric matrix to C-contiguous float32, allowing NaN.
 
-    Rejeita vazios, complexos, infinito (inclusive overflow da conversão),
-    matrizes esparsas e número incorreto de colunas. Não altera o argumento.
-    O custo desta função integra o tempo de fit/predict da API pública.
+    Rejects empty, complex, infinite (including conversion overflow) and sparse
+    inputs and a wrong number of columns. Does not modify the argument. Its
+    cost is part of the fit/predict time of the public API.
     """
     raw = np.asarray(X)
     if raw.ndim != 2 or 0 in raw.shape or raw.dtype.kind not in "biuf":
@@ -66,14 +66,14 @@ def validate_X(X, *, n_features=None):
 
 
 def prepare_training_data(X, y, sample_weight=None):
-    """Valide treino e retorne (X32, y_int32, pesos64, classes_originais).
+    """Validate training data and return (X32, y_int32, weights64, original_classes).
 
-    Aceita alvo unidimensional binário/multiclasse, inclusive strings.
-    classes segue np.unique; seu índice resolve empates na previsão.
-    Pesos devem ser finitos, não negativos, alinhados e ter soma positiva.
-    Linhas de peso zero não participam de bins, suporte mínimo ou splits;
-    classes_ preserva todas as classes observadas antes dessa exclusão.
-    Os dados de entrada nunca são modificados e nenhum holdout é usado.
+    Accepts a one-dimensional binary/multiclass target, including strings.
+    classes follows np.unique; its index breaks ties at prediction. Weights
+    must be finite, non-negative, aligned and have a positive sum. Zero-weight
+    rows take no part in bins, minimum support or splits; classes_ keeps every
+    class observed before that exclusion. The inputs are never modified and
+    no holdout is used.
     """
     X = validate_X(X)
     target = np.asarray(y)
@@ -88,7 +88,7 @@ def prepare_training_data(X, y, sample_weight=None):
     if (weights < 0).any() or not (weights > 0).any():
         raise ValueError("Sample weights must be non-negative with a positive sum.")
     if not np.isfinite(weights.sum()):
-        raise ValueError("Soma de pesos excede a capacidade de float64.")
+        raise ValueError("The sum of the weights exceeds the float64 range.")
     active = weights > 0
     if not active.all():
         X, encoded, weights = X[active], encoded[active], weights[active]
@@ -97,10 +97,10 @@ def prepare_training_data(X, y, sample_weight=None):
 
 
 def allocate_nodes(capacity, n_classes):
-    """Aloque arrays de nós ainda NÃO treinados, todos inicialmente folhas.
+    """Allocate node arrays for an UNTRAINED tree, all nodes initially leaves.
 
-    O builder deve começar pequeno, ampliar geometricamente e preencher
-    massas antes de publicar a árvore; evitar alocar 2**max_depth de saída.
+    The builder starts small, grows the arrays geometrically and fills the
+    masses before publishing the tree; it avoids allocating 2**max_depth up front.
     """
     if capacity < 1 or n_classes < 1:
         raise ValueError("capacity e n_classes devem ser positivos.")

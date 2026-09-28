@@ -17,15 +17,16 @@ from ._kernels import best_cut_1d, hist_1d
 def screen_features(X, y, margin=None, sample_weight=None, *, n_boot=30,
                     max_bins=32, lam=1.0, min_weight=20.0, top_k=5,
                     random_state=0):
-    """Pontue cada feature pelo melhor corte único sobre o resíduo de ``margin``.
+    """Score each feature by its best single cut on the residual of ``margin``.
 
-    ``margin`` é a margem (logit) de um modelo base; ``None`` usa a constante.
-    O bootstrap usa pesos de Poisson(1) sobre os mesmos bins.
+    ``margin`` is the margin (logit) of a base model; ``None`` uses the
+    constant. The bootstrap uses Poisson(1) weights over the same bins.
 
-    Devolve dict de arrays por feature: ``gain`` e ``threshold`` na amostra
-    toda; ``rank_mean`` (rank médio no bootstrap, 1 = melhor), ``top_k_freq``
-    (fração de réplicas no top-k) e ``threshold_iqr`` (IQR do limiar nas
-    réplicas: limiar instável = corte que não se sustenta).
+    Returns a dict of per-feature arrays: ``gain`` and ``threshold`` on the full
+    sample; ``rank_mean`` (mean bootstrap rank, 1 = best), ``top_k_freq``
+    (share of replicates in the top k) and ``threshold_iqr`` (IQR of the
+    threshold across replicates: an unstable threshold is a cut that does not
+    hold up).
     """
     X = as_float_matrix(X)
     n, p = X.shape
@@ -49,7 +50,7 @@ def screen_features(X, y, margin=None, sample_weight=None, *, n_boot=30,
         for j in range(p):
             thresholds[r, j] = bin_threshold(edges[j], cb[j])
     threshold = np.array([bin_threshold(edges[j], cut[j]) for j in range(p)])
-    if n_boot == 0:  # sem bootstrap: só o ganho e o limiar
+    if n_boot == 0:  # no bootstrap: gain and threshold only
         nan = np.full(p, np.nan)
         return dict(gain=gain, threshold=threshold, rank_mean=nan,
                     top_k_freq=nan, threshold_iqr=nan)

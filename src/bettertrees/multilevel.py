@@ -22,8 +22,8 @@ from .search import (
     hist_edge_layout,
 )
 
-# Acima disto o histograma conjunto do bloco (bins² x features x classes)
-# fica grande demais; cai-se no caminho por candidato.
+# Above this the block's joint histogram (bins^2 x features x classes)
+# gets too large; the per-candidate path is used instead.
 _BLOCK_KERNEL_MAX_CELLS = 50_000_000
 
 

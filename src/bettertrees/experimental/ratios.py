@@ -23,7 +23,7 @@ _KINDS = {"ratio": 0, "diff": 1}
 
 
 def top_pairs(matrix, k):
-    """Os k pares (i < j) de maior valor numa matriz simétrica (ex.: coocorrência)."""
+    """The k pairs (i < j) with the largest value in a symmetric matrix (e.g. co-occurrence)."""
     iu, ju = np.triu_indices(matrix.shape[0], 1)
     order = np.argsort(-matrix[iu, ju], kind="stable")[:k]
     return np.stack([iu[order], ju[order]], axis=1).astype(np.int64)
@@ -53,19 +53,19 @@ def pair_shape_scores(X, y, margin=None, sample_weight=None, *, pairs=None,
 
 
 class RatioVocabulary:
-    """Seleciona até ``max_terms`` combinações com forma de razão e as anexa a X.
+    """Select up to ``max_terms`` ratio-shaped combinations and append them to X.
 
     Parameters
     ----------
     kind : {'ratio', 'diff'}
-        Razão x_i/x_j (ambas > 0) ou diferença x_i − x_j (mesma unidade).
-    candidates : 'all' ou array (k, 2)
-        Pares candidatos; use ``top_pairs(teacher_path_pairs(...), k)`` para
-        o braço "pares do professor".
+        Ratio x_i/x_j (both > 0) or difference x_i - x_j (same unit).
+    candidates : 'all' or array (k, 2)
+        Candidate pairs; use ``top_pairs(teacher_path_pairs(...), k)`` for the
+        "teacher pairs" arm.
     min_valid : float
-        Fração mínima de linhas elegíveis (razão: ambas positivas e finitas).
+        Minimum share of eligible rows (ratio: both positive and finite).
     min_shape : float
-        Folga mínima de ``shape``; 0 = basta a diagonal ganhar.
+        Minimum ``shape`` margin; 0 = the diagonal only has to win.
     """
 
     def __init__(self, *, max_terms=10, kind="ratio", candidates="all",
@@ -99,7 +99,7 @@ class RatioVocabulary:
         return self
 
     def terms(self, X):
-        """Só as colunas novas (n, n_terms); NaN onde a linha é inelegível."""
+        """Only the new columns (n, n_terms); NaN where the row is ineligible."""
         X = as_float_matrix(X)
         a = X[:, self.pairs_[:, 0]]
         b = X[:, self.pairs_[:, 1]]
@@ -111,7 +111,7 @@ class RatioVocabulary:
         return out
 
     def transform(self, X):
-        """X original seguido das colunas do vocabulário."""
+        """The original X followed by the vocabulary columns."""
         X = as_float_matrix(X)
         return np.hstack([X, self.terms(X)])
 

@@ -30,7 +30,7 @@ from ..sums.additive import AdditiveTreeBooster
 
 
 def booster_rules(booster):
-    """Regras (tuplas ordenadas de (f, t, esquerda?)) dos termos de um booster d1/d2."""
+    """Rules (sorted tuples of (f, t, goes_left)) from the terms of a depth-1/2 booster."""
     rules = set()
     for (f1, t1, fl, tl, fr, tr), _ in booster.terms_:
         for side, (fc, tc) in ((True, (fl, tl)), (False, (fr, tr))):
@@ -52,11 +52,12 @@ def rule_matrix(Xb, rules):
 
 
 class RuleFitLasso(ClassifierMixin, BaseEstimator):
-    """Scorecard de regras escolhidas por lasso sob orçamentos de condições.
+    """Scorecard of rules chosen by the lasso under budgets of conditions.
 
-    ``fit`` calcula o caminho uma vez e ajusta um modelo por orçamento em
-    ``budgets``; ``predict_proba(X, budget=b)`` usa o de orçamento b (padrão:
-    o maior). ``y_soft`` só muda as candidatas (booster no alvo suave).
+    ``fit`` computes the path once and fits one model per budget in
+    ``budgets``; ``predict_proba(X, budget=b)`` uses the one with budget b
+    (default: the largest). ``y_soft`` only changes the candidates (booster
+    fitted on the soft target).
     """
 
     def __init__(self, *, budgets=(16,), n_rounds=300, learning_rate=0.1,
@@ -92,15 +93,15 @@ class RuleFitLasso(ClassifierMixin, BaseEstimator):
         support = R.mean(axis=0)
         keep = (support >= self.min_support) & (support <= 1 - self.min_support)
         R, rules, support = R[:, keep], [r for r, k in zip(rules, keep) if k], support[keep]
-        # colunas idênticas (mesma partição) contam uma vez
+        # identical columns (same partition) count once
         _, first = np.unique(np.packbits(R, axis=0), axis=1, return_index=True)
         first = np.sort(first)
         R, rules, support = R[:, first], [rules[k] for k in first], support[first]
         self.candidate_rules_ = rules
         cost = np.array([len(r) for r in rules])
-        # Lasso sobre min(R, 1 − R) escalado: o complemento só troca o sinal do
-        # coeficiente (o intercepto absorve), o conjunto selecionado é o mesmo
-        # e a matriz fica esparsa (suporte <= 50%).
+        # Lasso on the scaled min(R, 1 - R): the complement only flips the sign
+        # of the coefficient (the intercept absorbs it), the selected set is the
+        # same and the matrix stays sparse (support <= 50%).
         flip = support > 0.5
         scale = 1.0 / np.sqrt(support * (1 - support))
         if self.solver == "path":
@@ -121,12 +122,12 @@ class RuleFitLasso(ClassifierMixin, BaseEstimator):
         return self
 
     def _select_path(self, Z, scale, cost, yy):
-        """Caminho do lasso com warm start (Numba): um ponto por λ, λ decrescente.
+        """Lasso path with warm starts (Numba): one point per lambda, lambda decreasing.
 
-        Para cada orçamento, o ponto de menor λ cujo custo cabe (o mesmo critério
-        do "maior C" da versão liblinear). O caminho é denso (``n_lambdas`` λ
-        geométricos até λ_max·``lambda_ratio``) e para quando o custo passa do
-        maior orçamento.
+        For each budget, the point with the smallest lambda whose cost fits (the
+        same criterion as the "largest C" of the liblinear version). The path is
+        dense (``n_lambdas`` geometric lambdas down to lambda_max *
+        ``lambda_ratio``) and stops when the cost exceeds the largest budget.
         """
         from ..sums._kernels import l1_logistic_path
         n, m = Z.shape
@@ -141,9 +142,9 @@ class RuleFitLasso(ClassifierMixin, BaseEstimator):
         args = (indptr, indices, scale.astype(np.float64), y)
         extra = (cost.astype(np.float64), float(max(self.budgets)), 1e-7, 50, 1000)
         betas, b0s, done = l1_logistic_path(*args, lambdas, *extra, np.zeros(m), np.nan)
-        # pontos (λ, β, b0, custo); o caminho em grade pode pular várias regras
-        # de uma vez e saltar por cima de um orçamento: refina esse trecho com
-        # um sub-caminho fino que parte do último ponto que cabia (warm start)
+        # points (lambda, beta, b0, cost); the grid path may add several rules
+        # at once and jump over a budget: refine that stretch with a fine
+        # sub-path starting from the last point that fit (warm start)
         pts = [(lambdas[k], betas[k].copy(), b0s[k],
                 int(cost[betas[k] != 0].sum())) for k in range(done)]
         for _ in range(self.refine_levels):
@@ -173,7 +174,7 @@ class RuleFitLasso(ClassifierMixin, BaseEstimator):
         return out
 
     def _select_liblinear(self, Z, cost, yy):
-        """Versão de referência: fits independentes do liblinear + bisseção em log C."""
+        """Reference version: independent liblinear fits plus bisection on log C."""
         cache = {}
 
         def point(C):
@@ -222,7 +223,7 @@ class RuleFitLasso(ClassifierMixin, BaseEstimator):
 
     def predict_proba(self, X, budget=None):
         rules, model = self._model(budget)
-        if model is None:  # nenhum ponto do caminho cabe: só o intercepto
+        if model is None:  # no point of the path fits: intercept only
             p = np.full(len(X), self.prior_)
             return np.column_stack([1 - p, p])
         return model.predict_proba(rule_matrix(rebin(as_float_matrix(X), self.bin_edges_), rules))

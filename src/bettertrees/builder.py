@@ -26,21 +26,19 @@ def grow_tree_exact(X, y, weights, *, n_classes, max_depth, min_samples_leaf,
                     stopping="bound", gain_tolerance=0.0, stats=None,
                     objective="gini", positive_class=0, min_precision=0.0,
                     min_support=0.0, max_feature_repeats=None):
-    """Cresça uma árvore exata e retorne arrays recortados aos nós usados.
+    """Grow an exact tree and return the arrays trimmed to the nodes used.
 
-    Uma permutação int64 representa todos os recortes de amostras. Escolher
-    motor antes do JIT. Sem max_leaf_nodes: pilha iterativa; com limite de
-    folhas: best-first por redução ponderada GLOBAL (compatível com o orçamento
-    do comparador). Raiz tem profundidade 0; folha pura ou sem split encerra.
-    Para Gini, min_impurity_decrease compara W_node/W_root * gain; para
-    precision, compara o aumento da melhor precision filha sobre a do pai.
-    Aceitar ganho zero no Gini permite estruturas como XOR; precision só
-    aceita ganho positivo, pois não há melhora de métrica.
-    Nunca dividir por peso zero nem exceder o orçamento em folhas/profundidade.
-    O motor exato sempre varre todos os candidatos: stopping='bound' é
-    aceito por compatibilidade com o parâmetro padrão, mas não aplica bound
-    nem gain_tolerance. A API registra o modo efetivo em fit_stats_.
-    min_impurity_decrease continua controlando apenas o crescimento.
+    One int64 permutation represents every sample slice. The engine is chosen
+    before the JIT. Without max_leaf_nodes: an iterative stack; with a leaf
+    limit: best-first by the GLOBAL weighted decrease. The root has depth 0; a
+    pure leaf or a node without a split stops. For Gini, min_impurity_decrease
+    is compared with W_node / W_root * gain; for precision, with the increase
+    of the best child precision over the parent's. Accepting a zero Gini gain
+    allows structures such as XOR; precision only accepts positive gains.
+    Never divides by zero weight or exceeds the leaf/depth budget. The exact
+    engine always scans every candidate: stopping='bound' is accepted for
+    compatibility with the default parameter but applies neither the bound nor
+    gain_tolerance. The API records the effective mode in fit_stats_.
     """
     return _grow_tree(
         X, y, weights, n_classes=n_classes, max_depth=max_depth,
@@ -59,14 +57,14 @@ def grow_tree_hist(X, X_binned, y, weights, edges, *, n_classes, max_depth,
                    reuse_parent_histograms=False, positive_class=0,
                    min_precision=0.0, min_support=0.0,
                    max_feature_repeats=None):
-    """Cresça uma árvore por histogramas e retorne arrays recortados.
+    """Grow a tree on histograms and return the trimmed arrays.
 
-    X e bins devem representar as MESMAS linhas na MESMA ordem. X permite
-    particionar índices e armazenar cortes na escala original. Discretização
-    integra o fit completo; nunca medir só este kernel como tempo de treino.
-    O caminho de referência acumula cada nó. A variante experimental
-    ``reuse_parent_histograms`` só funciona em crescimento depth-first com
-    pesos unitários e deriva o filho maior por subtração do pai.
+    X and the bins must hold the SAME rows in the SAME order. X is used to
+    partition indices and to store cuts on the original scale. Binning is part
+    of the full fit; never time only this kernel as training time. The
+    reference path accumulates every node. The experimental
+    ``reuse_parent_histograms`` variant only works for depth-first growth with
+    unit weights and derives the larger child by subtraction from the parent.
     """
     X_binned = np.asarray(X_binned)
     if X_binned.shape != X.shape or X_binned.dtype != np.uint8:
@@ -90,10 +88,10 @@ def _grow_tree(X, y, weights, *, n_classes, max_depth, min_samples_leaf,
                parallel=False, reuse_parent_histograms=False, positive_class=0,
                min_precision=0.0, min_support=0.0,
                max_feature_repeats=None):
-    """Implementação comum dos dois builders; índices são a única partição.
+    """Shared implementation of both builders; the indices are the only partition.
 
-    Sem ``max_leaf_nodes``: pilha depth-first. Com orçamento de folhas:
-    best-first por ``spec.growth_priority``, desempate pelo menor id de nó.
+    Without ``max_leaf_nodes``: a depth-first stack. With a leaf budget:
+    best-first by ``spec.growth_priority``, ties broken by the smallest node id.
     """
     if stopping not in ("off", "bound"):
         raise ValueError("stopping must be 'off' or 'bound'.")
@@ -164,9 +162,9 @@ def _grow_tree(X, y, weights, *, n_classes, max_depth, min_samples_leaf,
         if max_feature_repeats is None:
             search_features = feature_order
         else:
-            # Subconjunto na ordem de desempate; o caminho row-major acumula
-            # todas as colunas e varre só estas, então não há penalidade
-            # quando o limite ainda não restringe nada.
+            # Subset in tie-break order; the row-major path accumulates every
+            # column and scans only these, so there is no penalty while the
+            # limit does not restrict anything yet.
             search_features = feature_order[
                 path_feature_counts[feature_order] < max_feature_repeats]
             local_stats["features_skipped_by_path"] += int(
@@ -174,9 +172,9 @@ def _grow_tree(X, y, weights, *, n_classes, max_depth, min_samples_leaf,
             if len(search_features) == 0:
                 return leaf(work, mass)
         if splitter == "hist":
-            # Em árvores profundas há muitos nós médios; 256 é o ponto de
-            # corte experimental que evita paralelizar folhas pequenas sem
-            # deixar o trabalho relevante serializado.
+            # Deep trees have many medium nodes; 256 is the experimental cut-off
+            # that avoids parallelizing small leaves without leaving the relevant
+            # work serialized.
             node_parallel = parallel and (end - start >= 256)
             if reuse_parent_histograms and node_histograms is None:
                 node_histograms = _build_histograms_for_node(
@@ -217,13 +215,13 @@ def _grow_tree(X, y, weights, *, n_classes, max_depth, min_samples_leaf,
     leaf_count = 1
 
     def expand(current):
-        """Particione o nó escolhido, grave o corte e avalie os dois filhos."""
+        """Partition the chosen node, store the cut and evaluate both children."""
         nonlocal next_node, leaf_count
         split = current["split"]
         start, end, depth, node_id, path_feature_counts = current["work"]
         partition_start = perf_counter()
         if splitter == "hist" and np.isfinite(split.threshold):
-            # Mesma partição de treino, limiar na convenção do exact.
+            # Same training partition, threshold in the exact engine's convention.
             split = split._replace(threshold=float(local_midpoint_threshold(
                 X, sample_indices, start, end, split.feature, split.threshold)))
         mid = int(partition_samples(
@@ -252,8 +250,8 @@ def _grow_tree(X, y, weights, *, n_classes, max_depth, min_samples_leaf,
         if not reuse_parent_histograms:
             return evaluate(left_work), evaluate(right_work)
 
-        # Reuso pai-filho: acumular o filho menor e obter o maior por
-        # subtração. No empate de tamanho, o acumulado é o esquerdo.
+        # Parent-child reuse: accumulate the smaller child and get the larger
+        # one by subtraction. On equal sizes, the accumulated one is the left.
         parent_mass_hist, parent_count_hist = current["histograms"]
         left_size = mid - start
         right_size = end - mid
@@ -293,8 +291,8 @@ def _grow_tree(X, y, weights, *, n_classes, max_depth, min_samples_leaf,
             if current["split"] is not None:
                 stack.extend(expand(current))
     else:
-        # Best-first: maior prioridade primeiro; ids únicos desempatam sem
-        # comparar os dicionários.
+        # Best-first: highest priority first; unique ids break ties without
+        # comparing the dicts.
         heap = []
 
         def push(item):

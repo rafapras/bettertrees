@@ -15,15 +15,15 @@ from numba import njit, prange
 
 
 def _count_balanced_cut_positions(counts, max_bins):
-    """Posições i (corte entre o i-ésimo e o (i+1)-ésimo valor distinto).
+    """Positions i (a cut between the i-th and the (i+1)-th distinct value).
 
-    Quantis puros desperdiçam orçamento quando poucos valores concentram a
-    massa: vários quantis caem no mesmo valor e ``unique`` os funde, e a cauda
-    de valores distintos fica com poucos bins. Aqui, valores com contagem >=
-    massa média por bin livre viram bins próprios (iterando, pois cada um
-    libera orçamento), e o resto é repartido por contagem entre as sequências
-    de valores leves que ficam entre eles. Sem empates (contagens 1), reproduz
-    bins de mesma contagem, como os quantis.
+    Pure quantiles waste the budget when a few values hold most of the mass:
+    several quantiles fall on the same value, ``unique`` merges them, and the
+    tail of distinct values gets few bins. Here, values whose count is at least
+    the average mass per free bin get their own bins (iterating, since each
+    one frees budget), and the rest is split by count among the runs of light
+    values between them. Without ties (all counts 1) this reproduces
+    equal-count bins, like quantiles.
     """
     n_values = len(counts)
     heavy = np.zeros(n_values, dtype=bool)
@@ -44,7 +44,7 @@ def _count_balanced_cut_positions(counts, max_bins):
             positions.add(int(i) - 1)
         if i < n_values - 1:
             positions.add(int(i))
-    # Sequências de valores leves entre valores pesados (ou nas pontas).
+    # Runs of light values between heavy values (or at the ends).
     start = 0
     while start < n_values:
         if heavy[start]:
@@ -62,8 +62,8 @@ def _count_balanced_cut_positions(counts, max_bins):
             positions.update(int(start + i) for i in inner if start + i < stop - 1)
         start = stop
     positions = np.array(sorted(positions), dtype=np.int64)
-    # Arredondamentos podem passar do orçamento: funda o par de bins
-    # vizinhos de menor contagem até caber.
+    # Rounding may exceed the budget: merge the pair of neighbouring bins
+    # with the smallest count until it fits.
     while len(positions) > max_bins - 1:
         bounds = np.r_[-1, positions, n_values - 1]
         cumulative = np.r_[0, np.cumsum(counts)]
@@ -74,13 +74,13 @@ def _count_balanced_cut_positions(counts, max_bins):
 
 
 def _fit_bin_edges_column(col, max_bins, quantiles):
-    """Aprenda cortes de uma coluna; função independente para paralelismo."""
+    """Learn the cuts of one column; a standalone function for parallelism."""
     finite = col[~np.isnan(col)]
     unique, counts = np.unique(finite, return_counts=True)
     unique = unique.astype(np.float64)
-    # O bin 0 fica reservado para NaN e uint8 suporta no máximo ids 1..255.
-    # Portanto, só preservar todos os intervalos quando eles cabem no
-    # orçamento; cardinalidade alta passa pela repartição por contagem.
+    # Bin 0 is reserved for NaN and uint8 holds at most ids 1..255.
+    # So keep every interval only when they fit in the budget; high
+    # cardinality goes through the split by count.
     if len(unique) <= max_bins:
         cuts = unique[:-1] / 2 + unique[1:] / 2
     else:
@@ -90,15 +90,14 @@ def _fit_bin_edges_column(col, max_bins, quantiles):
 
 
 def fit_bin_edges(X, max_bins=255, n_jobs=1):
-    """Aprenda limites SOMENTE no treino validado, ignorando NaN.
+    """Learn the edges ONLY on the validated training data, ignoring NaN.
 
-    Retorna tupla de vetores float64 crescentes, com até max_bins-1 cortes.
-    Usa pontos médios quando há poucos valores únicos, preservando colunas
-    indicadoras; caso contrário, quantis não ponderados e sem amostragem.
-    Constantes e colunas só com NaN recebem vetor vazio. max_bins em [2,255]
-    permite uint8 com bin 0 reservado para NaN. É uma referência funcional:
-    unique/quantile por coluna pode ser um gargalo a medir antes de otimizar.
-    Pesos afetam impureza, mas não a localização destes quantis.
+    Returns a tuple of increasing float64 vectors with at most max_bins-1 cuts.
+    Uses midpoints when there are few unique values, which preserves indicator
+    columns; otherwise unweighted quantiles without sampling. Constant and
+    all-NaN columns get an empty vector. max_bins in [2, 255] fits uint8 with
+    bin 0 reserved for NaN. Weights affect impurity, not the location of these
+    quantiles.
     """
     if (isinstance(max_bins, (bool, np.bool_))
             or not isinstance(max_bins, (int, np.integer))
@@ -120,7 +119,7 @@ def fit_bin_edges(X, max_bins=255, n_jobs=1):
 
 @njit(cache=True)
 def _count_binary_values(values):
-    """Conte zeros em uma coluna 0/1; devolva -1 ao ver outro valor."""
+    """Count zeros in a 0/1 column; return -1 on any other value."""
     zeros = 0
     for value in values:
         if value == 0:
@@ -131,10 +130,10 @@ def _count_binary_values(values):
 
 
 def _fit_bin_edges_binary(X, max_bins=255):
-    """Aprenda limites com quantis idênticos à referência em colunas 0/1.
+    """Learn edges with quantiles identical to the reference on 0/1 columns.
 
-    O atalho evita a partição de grandes colunas indicadoras. Nas demais,
-    mantém o caminho original; `fit_bin_edges` segue como baseline de produção.
+    The shortcut avoids partitioning large indicator columns. Other columns
+    keep the original path; `fit_bin_edges` remains the production baseline.
     """
     if (isinstance(max_bins, (bool, np.bool_))
             or not isinstance(max_bins, (int, np.integer))
@@ -170,12 +169,12 @@ def _fit_bin_edges_binary(X, max_bins=255):
 
 
 def transform_bins(X, edges):
-    """Aplique limites congelados e devolva uint8 C-contiguous de shape X.
+    """Apply frozen edges and return C-contiguous uint8 with the shape of X.
 
-    NaN -> 0; finitos -> 1..B. Igualdade com um limite fica no bin inferior
-    (searchsorted side='left'), exatamente como X <= threshold na previsão.
-    Extremos novos entram nos bins externos; não recalcular quantis.
-    Contrato interno: X já validado e edges gerado por fit_bin_edges.
+    NaN -> 0; finite values -> 1..B. A value equal to an edge goes to the lower
+    bin (searchsorted side='left'), exactly like X <= threshold at prediction.
+    New extremes fall into the outer bins; quantiles are never recomputed.
+    Internal contract: X already validated and edges produced by fit_bin_edges.
     """
     if len(edges) != X.shape[1]:
         raise ValueError("One list of edges is required per column.")
@@ -188,7 +187,7 @@ def transform_bins(X, edges):
 
 @njit(cache=True)
 def _transform_bins_row_major_kernel(X, padded_edges, lengths):
-    """Aplique side='left' por linha, respeitando o layout C de X e da saida."""
+    """Apply side='left' row by row, respecting the C layout of X and of the output."""
     result = np.empty(X.shape, dtype=np.uint8)
     for i in range(X.shape[0]):
         for j in range(X.shape[1]):
@@ -209,7 +208,7 @@ def _transform_bins_row_major_kernel(X, padded_edges, lengths):
 
 @njit(cache=True, parallel=True)
 def _transform_bins_row_major_parallel_kernel(X, padded_edges, lengths):
-    """Transformação row-major paralela por linhas, sem alterar os cortes."""
+    """Row-major transform, parallel over rows, without changing the cuts."""
     result = np.empty(X.shape, dtype=np.uint8)
     for i in prange(X.shape[0]):
         for j in range(X.shape[1]):
@@ -229,10 +228,10 @@ def _transform_bins_row_major_parallel_kernel(X, padded_edges, lengths):
 
 
 def transform_bins_row_major(X, edges, n_jobs=1):
-    """Variante row-major; preserva exatamente os bins da referencia NumPy.
+    """Row-major variant; reproduces the NumPy reference bins exactly.
 
-    A preparacao dos limites entra no tempo medido. `transform_bins` permanece
-    disponivel como baseline comparavel; ambos exigem X previamente validado.
+    Preparing the edges is part of the measured time. `transform_bins` stays
+    available as a comparable baseline; both require an already validated X.
     """
     if len(edges) != X.shape[1]:
         raise ValueError("One list of edges is required per column.")

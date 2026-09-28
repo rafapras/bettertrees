@@ -24,7 +24,7 @@ from numba import njit, prange
 
 @njit(cache=True)
 def logistic_grad_hess(y, margin, w):
-    """Gradiente e hessiana da log-loss com alvo y em [0, 1] (aceita alvo suave)."""
+    """Gradient and Hessian of the log-loss with target y in [0, 1] (soft targets allowed)."""
     n = len(y)
     g = np.empty(n)
     h = np.empty(n)
@@ -61,7 +61,7 @@ def hist_1d(Xb, g, h, w, B):
 
 @njit(cache=True)
 def _best_cut_hist(hist, nb, lam, min_weight):
-    """Melhor corte de um histograma (nb, 3); devolve (ganho, t) ou (0, -1)."""
+    """Best cut of a histogram (nb, 3); returns (gain, t) or (0, -1)."""
     G = 0.0
     H = 0.0
     W = 0.0
@@ -90,7 +90,7 @@ def _best_cut_hist(hist, nb, lam, min_weight):
 
 @njit(cache=True)
 def best_cut_1d(hist, nb, lam, min_weight):
-    """Melhor corte por feature: (ganho[p], t[p]); t = -1 sem corte válido."""
+    """Best cut per feature: (gain[p], t[p]); t = -1 when no cut is valid."""
     p = hist.shape[0]
     gains = np.zeros(p)
     cuts = np.full(p, -1, dtype=np.int64)
@@ -101,8 +101,8 @@ def best_cut_1d(hist, nb, lam, min_weight):
 
 @njit(cache=True)
 def _best_quadrant_hist(h2, na, nb, lam, min_weight):
-    """Melhor par de cortes (ta, tb) com 4 células; (ganho, ta, tb)."""
-    # prefixo 2D: P[a, b] = soma das células com bin_i <= a e bin_j <= b
+    """Best pair of cuts (ta, tb) with 4 cells; (gain, ta, tb)."""
+    # 2D prefix: P[a, b] = sum of the cells with bin_i <= a and bin_j <= b
     P = np.zeros((na, nb, 3))
     for a in range(na):
         for b in range(nb):
@@ -148,7 +148,7 @@ def _best_quadrant_hist(h2, na, nb, lam, min_weight):
 
 @njit(cache=True, parallel=True)
 def quadrant_scores(Xb, g, h, w, nb, pairs, lam, min_weight):
-    """FAST: melhor quadrante para cada par (i, j); (ganho, ta, tb) por par."""
+    """FAST: best quadrant for each pair (i, j); (gain, ta, tb) per pair."""
     n = Xb.shape[0]
     k = pairs.shape[0]
     gains = np.zeros(k)
@@ -171,12 +171,13 @@ def quadrant_scores(Xb, g, h, w, nb, pairs, lam, min_weight):
 
 @njit(cache=True, parallel=True)
 def combination_scores(X, g, h, w, pairs, kind, n_bins, lam, min_weight):
-    """Melhor corte único numa combinação de cada par, com bins próprios.
+    """Best single cut on a combination of each pair, with its own bins.
 
-    kind 0: log(x_i) − log(x_j) (razão; exige ambos > 0);
-    kind 1: x_i − x_j (diferença; mesma unidade é responsabilidade de quem chama).
-    Linhas inelegíveis (NaN, não positivas na razão) vão para o bin 0.
-    Devolve (ganho, limiar em z, fração elegível) por par; limiar NaN sem corte.
+    kind 0: log(x_i) - log(x_j) (ratio; requires both > 0);
+    kind 1: x_i - x_j (difference; the caller is responsible for the units).
+    Ineligible rows (NaN, non-positive for the ratio) go to bin 0. Returns
+    (gain, threshold on z, eligible share) per pair; threshold NaN when there
+    is no cut.
     """
     n = X.shape[0]
     k = pairs.shape[0]
@@ -212,7 +213,7 @@ def combination_scores(X, g, h, w, pairs, kind, n_bins, lam, min_weight):
                 zs[c] = z[r]
                 c += 1
         zs.sort()
-        # cortes em quantis, sem repetição
+        # quantile cuts, without repeats
         edges = np.empty(n_bins - 1)
         ne = 0
         for s in range(1, n_bins):
@@ -220,7 +221,7 @@ def combination_scores(X, g, h, w, pairs, kind, n_bins, lam, min_weight):
             if (ne == 0 or v > edges[ne - 1]) and v < zs[nv - 1]:
                 edges[ne] = v
                 ne += 1
-        nbq = ne + 2  # bin 0 inelegível, 1..ne+1 finitos
+        nbq = ne + 2  # bin 0 ineligible, 1..ne+1 finite
         hq = np.zeros((nbq, 3))
         for r in range(n):
             if ok[r]:
@@ -244,18 +245,18 @@ def combination_scores(X, g, h, w, pairs, kind, n_bins, lam, min_weight):
         if t >= 1:
             thresholds[q] = edges[t - 1]
         elif t == 0:
-            thresholds[q] = -np.inf  # só "inelegível × resto"
+            thresholds[q] = -np.inf  # only "ineligible vs the rest"
     return gains, thresholds, valid_frac
 
 
 @njit(cache=True, parallel=True)
 def best_depth2_reference(Xb, g, h, w, nb, lam, min_weight):
-    """Árvore Newton de profundidade 2 ótima por busca exaustiva nos bins.
+    """Optimal depth-2 Newton tree by exhaustive search over the bins.
 
-    Para cada raiz (f1, t1), cada filho escolhe o melhor corte único (ou fica
-    folha se nenhum ganha). Devolve, por f1, (ganho, t1, fL, tL, fR, tR);
-    quem chama escolhe o f1 de maior ganho (empate: menor f1).
-    Custo O(n p²) de memória de passagem e O(p · B² · p) de busca.
+    For each root (f1, t1), each child takes its best single cut (or stays a
+    leaf if none gains). Returns, per f1, (gain, t1, fL, tL, fR, tR); the caller
+    picks the f1 with the largest gain (ties: smallest f1). O(n p^2) passes over
+    the data and O(p * B^2 * p) search.
     """
     n, p = Xb.shape
     B = 0
@@ -335,7 +336,7 @@ def best_depth2_reference(Xb, g, h, w, nb, lam, min_weight):
 
 @njit(cache=True)
 def depth2_leaf_ids(Xb, f1, t1, fl, tl, fr, tr):
-    """Folha (0..3) de cada linha; filho sem corte (f = -1) usa só a 1ª folha do lado."""
+    """Leaf (0..3) of each row; a child without a cut (f = -1) uses the first leaf of its side."""
     n = Xb.shape[0]
     ids = np.empty(n, dtype=np.int64)
     for i in range(n):
@@ -348,7 +349,7 @@ def depth2_leaf_ids(Xb, f1, t1, fl, tl, fr, tr):
 
 @njit(cache=True)
 def newton_leaf_values(ids, g, h, n_leaves, lam):
-    """Valor de Newton por folha: −G/(H + λ)."""
+    """Newton value per leaf: -G / (H + lambda)."""
     G = np.zeros(n_leaves)
     H = np.zeros(n_leaves)
     for i in range(len(ids)):
@@ -364,7 +365,7 @@ def newton_leaf_values(ids, g, h, n_leaves, lam):
 
 @njit(cache=True)
 def _pair_cell(L, T, mode, f2, b2, f3, b3, c):
-    """Célula do tensor de pares do lado: mode 0 = L, mode 1 = T − L."""
+    """Cell of the side's pair tensor: mode 0 = L, mode 1 = T - L."""
     if mode == 0:
         return L[f2, b2, f3, b3, c]
     return T[f2, b2, f3, b3, c] - L[f2, b2, f3, b3, c]
@@ -372,14 +373,14 @@ def _pair_cell(L, T, mode, f2, b2, f3, b3, c):
 
 @njit(cache=True)
 def _solve_d2_from_pairs(L, T, mode, nb, lam, min_weight):
-    """Árvore d2 ótima de um lado dado o tensor de pares S[f2,b2,f3,b3,(G,H,W)].
+    """Optimal depth-2 tree of one side given the pair tensor S[f2, b2, f3, b3, (G, H, W)].
 
-    Devolve (ganho sobre o lado como folha, f2, t2, fl, tl, fr, tr); f2 = -1
-    quando nenhum corte vale (o lado fica folha).
+    Returns (gain over the side as a leaf, f2, t2, fl, tl, fr, tr); f2 = -1 when
+    no cut is worth it (the side stays a leaf).
     """
     p = L.shape[0]
     B = L.shape[1]
-    # marginal do lado por feature (via f2 = 0: soma sobre b2)
+    # marginal of the side per feature (via f2 = 0: sum over b2)
     M = np.zeros((p, B, 3))
     for b2 in range(nb[0]):
         for f3 in range(p):
@@ -452,12 +453,12 @@ def _solve_d2_from_pairs(L, T, mode, nb, lam, min_weight):
 
 @njit(cache=True, parallel=True)
 def best_depth3(Xb, g, h, w, nb, lam, min_weight):
-    """Árvore Newton de profundidade 3 ótima (busca exaustiva nos bins).
+    """Optimal depth-3 Newton tree (exhaustive search over the bins).
 
-    Para cada raiz (f1, t1), cada filho recebe a árvore d2 ótima do seu lado
-    (ou fica folha). Tensor de pares (p, B, p, B, 3) por thread: use com p e
-    B pequenos (quem chama limita as features). Devolve, por f1,
-    (ganho, t1, esquerda[6], direita[6]) no formato de ``_solve_d2_from_pairs``.
+    For each root (f1, t1), each child gets the optimal depth-2 tree of its
+    side (or stays a leaf). Pair tensor (p, B, p, B, 3) per thread: use with
+    small p and B (the caller limits the features). Returns, per f1,
+    (gain, t1, left[6], right[6]) in the format of ``_solve_d2_from_pairs``.
     """
     n, p = Xb.shape
     B = 0
@@ -484,7 +485,7 @@ def best_depth3(Xb, g, h, w, nb, lam, min_weight):
     res_gain = np.zeros(p)
     res = np.full((p, 13), -1, dtype=np.int64)
     for f1 in prange(p):
-        # linhas agrupadas pelo bin de f1 (counting sort)
+        # rows grouped by the bin of f1 (counting sort)
         counts = np.zeros(nb[f1] + 1, dtype=np.int64)
         for i in range(n):
             counts[Xb[i, f1] + 1] += 1
@@ -530,11 +531,11 @@ def best_depth3(Xb, g, h, w, nb, lam, min_weight):
     return res_gain, res
 
 
-# ---------------------------------------------------------------- árvores pequenas
+# ---------------------------------------------------------------- small trees
 
 @njit(cache=True)
 def small_tree_leaf_ids(Xb, feature, threshold, left, right):
-    """Nó-folha de cada linha numa árvore pequena (bins; x <= t vai à esquerda)."""
+    """Leaf node of each row in a small tree (bins; x <= t goes left)."""
     n = Xb.shape[0]
     ids = np.empty(n, dtype=np.int64)
     for i in range(n):
@@ -550,7 +551,7 @@ def small_tree_leaf_ids(Xb, feature, threshold, left, right):
 
 @njit(cache=True, parallel=True)
 def node_hist(Xb, g, h, w, node_of_row, n_nodes, B):
-    """Histograma (n_nodes, p, B, 3) das linhas agrupadas por nó."""
+    """Histogram (n_nodes, p, B, 3) of the rows grouped by node."""
     n, p = Xb.shape
     out = np.zeros((n_nodes, p, B, 3))
     for j in prange(p):
@@ -567,13 +568,13 @@ def node_hist(Xb, g, h, w, node_of_row, n_nodes, B):
 
 @njit(cache=True, parallel=True)
 def best_depth2(Xb, g, h, w, nb, lam, min_weight):
-    """Árvore d2 ótima; mesmo resultado BIT A BIT de ``best_depth2_reference``.
+    """Optimal depth-2 tree; BIT-FOR-BIT the same result as ``best_depth2_reference``.
 
-    Troca a ordem dos laços: para cada raiz f1, um par (f1, f2) por vez com um
-    histograma (nb[f1], B, 3) que cabe no cache, sobre X em colunas. Cada
-    célula soma as linhas na mesma ordem (i crescente) e as somas acumuladas
-    por t1 seguem a mesma ordem, então os ganhos e os desempates (f2 e t1
-    crescentes, ``>`` estrito) são idênticos.
+    Swaps the loop order: for each root f1, one pair (f1, f2) at a time with a
+    (nb[f1], B, 3) histogram that fits in cache, over column-major X. Each cell
+    sums the rows in the same order (increasing i) and the cumulative sums per
+    t1 follow the same order, so gains and tie-breaking (increasing f2 and t1,
+    strict ``>``) are identical.
     """
     n, p = Xb.shape
     B = 0
@@ -628,7 +629,7 @@ def best_depth2(Xb, g, h, w, nb, lam, min_weight):
                     for c in range(3):
                         left[b2, c] += h2[t1, b2, c]
                 if f2 == 0:
-                    # estatísticas do corte da raiz, como na referência (via f2 = 0)
+                    # statistics of the root cut, as in the reference (via f2 = 0)
                     GL = 0.0
                     HL = 0.0
                     WL = 0.0
@@ -673,7 +674,7 @@ def best_depth2(Xb, g, h, w, nb, lam, min_weight):
     return res_gain, res
 
 
-# ---------------------------------------------------------------- lasso logístico (caminho)
+# ---------------------------------------------------------------- L1 logistic path
 
 @njit(cache=True)
 def _soft(u, t):
@@ -695,19 +696,20 @@ def _col_dot(indptr, indices, j, v):
 @njit(cache=True)
 def l1_logistic_path(indptr, indices, scale, y, lambdas, cost, max_cost, tol, max_outer,
                      max_sweeps, beta_init, b0_init):
-    """Caminho do lasso logístico (estilo glmnet) sobre colunas binárias esparsas.
+    """L1 logistic regression path (glmnet style) over sparse binary columns.
 
-    Coluna j vale ``scale[j]`` nas linhas ``indices[indptr[j]:indptr[j+1]]`` e 0
-    no resto. Objetivo em cada λ: (1/n)·Σ log-loss + λ·Σ|β_j|, intercepto sem
-    penalidade. Para cada λ (decrescente, warm start): IRLS por fora,
-    coordinate descent por dentro, só sobre o conjunto forte (strong rules de
-    Tibshirani et al. 2012: |∇_j| ≥ 2λ_k − λ_{k−1}, mais os ativos). Ao
-    convergir, confere KKT nas colunas descartadas e readmite as violadoras —
-    a solução é a do problema completo, só evita varrer colunas inúteis.
-    Para quando o custo ativo (Σ cost_j dos β_j ≠ 0) passa de ``max_cost``.
-    ``beta_init``/``b0_init``: ponto de partida (warm start de um sub-caminho);
-    ``b0_init`` NaN = começar do zero com o intercepto da taxa média.
-    Devolve (β por λ, intercepto por λ, nº de λ resolvidos).
+    Column j equals ``scale[j]`` on rows ``indices[indptr[j]:indptr[j+1]]`` and
+    0 elsewhere. Objective at each lambda: (1/n) * sum log-loss + lambda *
+    sum |beta_j|, unpenalized intercept. For each lambda (decreasing, warm
+    start): IRLS outside, coordinate descent inside, only over the strong set
+    (strong rules of Tibshirani et al. 2012: |grad_j| >= 2 lambda_k -
+    lambda_{k-1}, plus the active set). At convergence, KKT is checked on the
+    discarded columns and violators are re-admitted, so the solution is that of
+    the full problem. Stops when the active cost (sum of cost_j over beta_j !=
+    0) exceeds ``max_cost``. ``beta_init``/``b0_init``: starting point (warm
+    start of a sub-path); ``b0_init`` NaN = start from zero with the intercept
+    of the mean rate. Returns (beta per lambda, intercept per lambda, number of
+    lambdas solved).
     """
     m = len(indptr) - 1
     n = len(y)
@@ -747,7 +749,7 @@ def l1_logistic_path(indptr, indices, scale, y, lambdas, cost, max_cost, tol, ma
                 pr = 1.0 / (1.0 + np.exp(-e)) if e >= 0 else np.exp(e) / (1.0 + np.exp(e))
                 wi = max(pr * (1 - pr), 1e-5)
                 wt[i] = wi
-                r[i] = y[i] - pr  # = w·(z − η) com z a resposta de trabalho
+                r[i] = y[i] - pr  # = w * (z - eta) with z the working response
                 wsum += wi
             if outer == 0:
                 cut = 2 * thr - thr_prev
@@ -800,7 +802,7 @@ def l1_logistic_path(indptr, indices, scale, y, lambdas, cost, max_cost, tol, ma
                         only_active = False  # ativos convergiram: varre o conjunto forte
                     else:
                         only_active = True
-                # KKT nas colunas fora do conjunto forte
+                # KKT on the columns outside the strong set
                 violated = False
                 for j in range(m):
                     if not strong[j] and abs(scale[j] * _col_dot(indptr, indices, j, r)) > thr:

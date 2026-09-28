@@ -23,7 +23,7 @@ from .kernels import gini, precision_leaf_score
 
 @dataclass(frozen=True)
 class ObjectiveParams:
-    """Parâmetros do objetivo, normalizados para tipos estáveis no Numba."""
+    """Objective parameters, normalized to types that are stable in Numba."""
 
     positive_class: int = 0
     min_precision: float = 0.0
@@ -36,13 +36,13 @@ class ObjectiveParams:
 
 @dataclass(frozen=True)
 class SplitObjectiveSpec:
-    """Metadados e comportamento de um objetivo aceito pelo builder.
+    """Metadata and behaviour of an objective accepted by the builder.
 
-    ``node_is_searchable(mass, params)``: o nó ainda pode ganhar com um corte.
-    ``accepts_gain(gain)``: o melhor corte encontrado é válido.
-    ``growth_priority(gain, mass, root_mass)``: valor comparado com
-    ``min_impurity_decrease`` e usado para ordenar o best-first.
-    ``search_hist``/``search_exact``: buscas com assinatura uniforme.
+    ``node_is_searchable(mass, params)``: the node can still gain from a cut.
+    ``accepts_gain(gain)``: the best cut found is valid.
+    ``growth_priority(gain, mass, root_mass)``: value compared with
+    ``min_impurity_decrease`` and used to order best-first growth.
+    ``search_hist``/``search_exact``: searches with a uniform signature.
     """
 
     name: str
@@ -66,7 +66,7 @@ def _gini_accepts_gain(gain):
 
 
 def _gini_growth_priority(gain, mass, root_mass):
-    # Redução de impureza ponderada pela massa relativa à raiz.
+    # Impurity decrease weighted by the mass relative to the root.
     return (mass.sum() / root_mass) * gain
 
 
@@ -100,7 +100,7 @@ def _precision_node_is_searchable(mass, params):
 
 
 def _precision_accepts_gain(gain):
-    # Sem melhora estrita da métrica não há corte.
+    # Without a strict improvement of the metric there is no cut.
     return bool(np.isfinite(gain) and gain > 0.0)
 
 
@@ -146,9 +146,9 @@ GINI_OBJECTIVE = SplitObjectiveSpec(
     search_exact=_gini_search_exact,
 )
 
-# Experimental: maximiza a melhor precision filha menos a do pai, com suporte
-# mínimo. Não maximiza TP nem cobertura e tende a cortes extremos (como um
-# peeling do PRIM). Ver PLANO_ARVORE_RAPIDA_FASE_3.md.
+# Experimental: maximizes the best child precision minus the parent's, with
+# minimum support. It does not maximize true positives or coverage and tends
+# toward extreme cuts (like PRIM's peeling).
 PRECISION_OBJECTIVE = SplitObjectiveSpec(
     name="precision",
     supports_hist=True,
@@ -168,7 +168,7 @@ _ENGINES = {"hist", "exact"}
 
 
 def resolve_objective(objective):
-    """Resolva um nome de objetivo sem aceitar fallback silencioso."""
+    """Resolve an objective name without any silent fallback."""
     if not isinstance(objective, str) or objective not in _OBJECTIVES:
         available = ", ".join(sorted(_OBJECTIVES))
         raise ValueError(f"objective must be one of: {available}.")
@@ -176,7 +176,7 @@ def resolve_objective(objective):
 
 
 def resolve_splitter_spec(splitter, objective="gini", search_stopping="bound"):
-    """Valide a combinação motor + objetivo + parada uma vez por fit."""
+    """Validate the engine + objective + stopping combination once per fit."""
     if splitter not in _ENGINES:
         raise ValueError("splitter must be 'hist' or 'exact'.")
     spec = resolve_objective(objective)

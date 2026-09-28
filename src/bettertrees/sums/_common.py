@@ -7,7 +7,7 @@ from ._kernels import logistic_grad_hess
 
 
 def as_float_matrix(X):
-    """X float64 C-contiguous (os kernels de combinação leem valores brutos)."""
+    """C-contiguous float64 X (the combination kernels read raw values)."""
     X = np.ascontiguousarray(np.asarray(X, dtype=np.float64))
     if X.ndim != 2:
         raise ValueError("X must be a 2D array.")
@@ -15,7 +15,7 @@ def as_float_matrix(X):
 
 
 def as_target(y, n):
-    """Alvo binário 0/1 ou suave em [0, 1], float64."""
+    """Binary 0/1 or soft target in [0, 1], as float64."""
     y = np.ascontiguousarray(np.asarray(y, dtype=np.float64))
     if y.shape != (n,) or not np.isfinite(y).all() or (y < 0).any() or (y > 1).any():
         raise ValueError("y must be a vector in [0, 1] aligned with X.")
@@ -32,7 +32,7 @@ def as_weights(sample_weight, n):
 
 
 def binned(X, max_bins):
-    """(Xb uint8, edges, nb int64) com bin 0 = NaN e nb[j] = len(edges[j]) + 2."""
+    """(Xb uint8, edges, nb int64) with bin 0 = NaN and nb[j] = len(edges[j]) + 2."""
     X32 = np.ascontiguousarray(X, dtype=np.float32)
     edges = fit_bin_edges(X32, max_bins)
     Xb = transform_bins_row_major(X32, edges)
@@ -45,7 +45,7 @@ def rebin(X, edges):
 
 
 def bin_threshold(edges_j, t):
-    """Valor do corte ``x <= valor`` equivalente ao bin t (NaN sempre à esquerda)."""
+    """Value v of the cut ``x <= v`` equivalent to bin t (NaN always goes left)."""
     if t < 0:
         return np.nan
     if t == 0:
@@ -54,7 +54,7 @@ def bin_threshold(edges_j, t):
 
 
 def base_margin(y, w):
-    """Logit da média ponderada: margem constante inicial."""
+    """Logit of the weighted mean: the constant initial margin."""
     m = float(np.clip(np.average(y, weights=w), 1e-6, 1 - 1e-6))
     return np.log(m / (1 - m))
 
@@ -68,13 +68,13 @@ def sigmoid(m):
 
 
 def top_features(Xb, g, h, w, nb, lam, min_weight, k, probe=8):
-    """As k features mais promissoras para a busca d2/d3 (ordem crescente de índice).
+    """The k most promising features for the depth-2/3 search (increasing index order).
 
-    Pontuação = max(ganho do melhor corte único, melhor quadrante FAST que a
-    feature forma com as ``probe`` melhores features univariadas). Só o ganho
-    univariado não enxerga interação pura (ex.: sign(x1·x2) sem efeito
-    principal), que é justamente o que a d2 procura. O resultado da busca é
-    ótimo DENTRO desse conjunto. Com p <= k devolve None (busca completa).
+    Score = max(gain of the best single cut, best FAST quadrant the feature
+    forms with the ``probe`` best univariate features). The univariate gain
+    alone misses pure interactions (e.g. sign(x1*x2) without main effects),
+    which is exactly what depth 2 looks for. The search result is optimal
+    WITHIN this set. With p <= k it returns None (full search).
     """
     from ._kernels import best_cut_1d, hist_1d, quadrant_scores
     p = Xb.shape[1]
@@ -92,13 +92,13 @@ def top_features(Xb, g, h, w, nb, lam, min_weight, k, probe=8):
 
 
 def teacher_top_features(X, y, k, w=None, random_state=0):
-    """Top-k features pela importância de GANHO de um LightGBM (o clássico).
+    """Top-k features by the GAIN importance of a LightGBM (the classic choice).
 
-    Roda uma vez por fit (100 árvores, 31 folhas, taxa 0,1). A importância de
-    ganho acumula também os splits dentro de interações, então enxerga
-    feature que só age em interação. Com p <= k devolve None. Sem o LightGBM
-    instalado (dependência opcional), cai na triagem FAST (``top_features``) no
-    gradiente da margem constante.
+    Runs once per fit (100 trees, 31 leaves, learning rate 0.1). Gain
+    importance also accumulates splits inside interactions, so it sees features
+    that only act through interactions. With p <= k it returns None. Without
+    LightGBM installed (optional dependency) it falls back to FAST screening
+    (``top_features``) on the gradient of the constant margin.
     """
     if k is None or X.shape[1] <= k:
         return None
@@ -121,16 +121,16 @@ _VALIDATE = dict(dtype=np.float64, order="C", ensure_all_finite="allow-nan", acc
 
 
 def fit_inputs(est, X, y, sample_weight=None, y_soft=None):
-    """Validação de ``fit`` pela API do sklearn (define ``n_features_in_`` e
-    ``feature_names_in_``). Devolve (X float64 C, classes, alvo em [0, 1], pesos)
-    e grava ``nan_features_``. ``y_soft`` troca o alvo 0/1 por probabilidades,
-    mantendo as classes de ``y``."""
+    """``fit`` validation through the sklearn API (sets ``n_features_in_`` and
+    ``feature_names_in_``). Returns (C float64 X, classes, target in [0, 1],
+    weights) and stores ``nan_features_``. ``y_soft`` replaces the 0/1 target
+    with probabilities, keeping the classes of ``y``."""
     from sklearn.utils.multiclass import check_classification_targets, type_of_target
     from sklearn.utils.validation import _check_sample_weight, validate_data
     X, y = validate_data(est, X, y, reset=True, **_VALIDATE)
     check_classification_targets(y)
     y_type = type_of_target(y, input_name="y", raise_unknown=True)
-    if y_type != "binary":  # mensagem padrão do sklearn para estimadores binários
+    if y_type != "binary":  # sklearn's standard message for binary-only estimators
         raise ValueError("Only binary classification is supported. The type of the target "
                          f"is {y_type}.")
     classes, encoded = np.unique(y, return_inverse=True)
@@ -145,7 +145,7 @@ def fit_inputs(est, X, y, sample_weight=None, y_soft=None):
 
 
 def predict_input(est, X, attribute):
-    """Validação de ``predict``: exige o ajuste e o mesmo número/nomes de colunas."""
+    """``predict`` validation: requires a fitted model and the same number/names of columns."""
     from sklearn.utils.validation import check_is_fitted, validate_data
     check_is_fitted(est, attribute)
     return validate_data(est, X, reset=False, **_VALIDATE)

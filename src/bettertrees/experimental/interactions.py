@@ -20,12 +20,13 @@ def all_pairs(p):
 
 def fast_pair_scores(X, y, margin=None, sample_weight=None, *, pairs=None,
                      max_bins=32, lam=1.0, min_weight=20.0):
-    """FAST (Lou et al., KDD 2013): ganho do melhor quadrante por par.
+    """FAST (Lou et al., KDD 2013): gain of the best quadrant for each pair.
 
-    Mede a interação que sobra **depois** do modelo base: passe em ``margin``
-    a margem (logit) de um modelo aditivo (ex.: ``AdditiveTreeBooster`` com
-    ``depth=1``). Sem margem, o escore mistura efeitos principais e interação.
-    Devolve dict com ``pairs`` (k, 2), ``gain``, ``order`` (decrescente).
+    Measures the interaction left **after** the base model: pass the margin
+    (logit) of an additive model in ``margin`` (e.g. ``AdditiveTreeBooster``
+    with ``depth=1``). Without a margin the score mixes main effects and
+    interaction. Returns a dict with ``pairs`` (k, 2), ``gain``, ``order``
+    (decreasing).
     """
     X = as_float_matrix(X)
     n, p = X.shape
@@ -40,12 +41,12 @@ def fast_pair_scores(X, y, margin=None, sample_weight=None, *, pairs=None,
 
 
 def teacher_path_pairs(booster, n_features, weight="count"):
-    """Coocorrência de features no mesmo caminho raiz→folha do professor (FRINGE).
+    """Co-occurrence of features on the same root-to-leaf path of a teacher (FRINGE).
 
-    ``booster``: ``lightgbm.Booster`` (ou ``LGBMClassifier.booster_``).
-    Cada folha soma ao par (i, j) de features do seu caminho o número de linhas
-    de treino na folha (``weight='count'``) ou 1 (``'leaf'``). Devolve matriz
-    simétrica (p, p) normalizada para soma 1 no triângulo superior.
+    ``booster``: a ``lightgbm.Booster`` (or ``LGBMClassifier.booster_``). Each
+    leaf adds to the pair (i, j) of features on its path the number of training
+    rows in the leaf (``weight='count'``) or 1 (``'leaf'``). Returns a symmetric
+    (p, p) matrix normalized to sum 1 over the upper triangle.
     """
     M = np.zeros((n_features, n_features))
     for info in booster.dump_model()["tree_info"]:

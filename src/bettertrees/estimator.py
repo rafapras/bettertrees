@@ -28,92 +28,89 @@ from .splitters import resolve_splitter_spec
 
 
 class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
-    """Scaffold de classificação binária/multiclasse por Gini ponderado.
+    """Decision tree classifier (binary or multiclass) grown on weighted Gini.
 
     Parameters
     ----------
     splitter : {'hist', 'exact'}, default='hist'
-        Motor próprio; nunca delega treino ao scikit-learn.
+        Split engine; training is never delegated to scikit-learn.
     objective : {'gini', 'precision'}, default='gini'
-        Objetivo que pontua os cortes. A interface é modular para objetivos
-        futuros. ``precision`` é **experimental**: pontua cada corte pela
-        melhor precision entre os filhos com suporte mínimo, menos a precision
-        do pai, sem usar o bound de Gini. Não maximiza TP nem cobertura e
-        tende a cortes extremos que isolam o filho mais puro.
-        ``feature_importances_`` continua medida em Gini.
+        Objective that scores the cuts; the interface is modular for future
+        objectives. ``precision`` is **experimental**: each cut is scored by the
+        best precision among children with minimum support, minus the parent's
+        precision, without the Gini bound. It does not maximize true positives
+        or coverage and tends toward extreme cuts that isolate the purest child.
+        ``feature_importances_`` is still measured in Gini.
     positive_class : scalar, default=None
-        Classe positiva explícita quando ``objective='precision'``.
+        Explicit positive class when ``objective='precision'``.
     min_precision : float in [0, 1], default=0.9
-        Precisão mínima de uma folha elegível no objetivo de precisão.
+        Minimum precision of an eligible leaf for the precision objective.
     min_support : float > 0, default=1.0
-        Massa ponderada mínima de uma folha elegível no objetivo de precisão.
+        Minimum weighted mass of an eligible leaf for the precision objective.
     max_feature_repeats : int >= 1 or None, default=None
-        Número máximo de ocorrências de uma mesma feature em cada caminho
-        raiz->folha. ``None`` preserva o crescimento sem esse limite; o
-        contador é compartilhado pelo caminho e permite, por exemplo, duas
-        ocorrências para representar um intervalo.
+        Maximum number of times one feature may appear on each root-to-leaf
+        path. ``None`` grows without this limit; the counter is shared along the
+        path and allows, for example, two occurrences to express an interval.
     monotonic_cst : array-like of {-1, 0, 1} or None, default=None
-        Restrições da probabilidade da classe positiva em classificação
-        binária. ``+1`` exige que a probabilidade não diminua ao aumentar a
-        feature, ``-1`` exige o inverso e ``0`` deixa a feature livre. A
-        restrição vale para valores finitos; NaN segue a direção aprendida em
-        cada nó e fica fora do contrato monotônico.
+        Constraints on the positive-class probability in binary classification.
+        ``+1`` requires the probability not to decrease as the feature grows,
+        ``-1`` the opposite, and ``0`` leaves the feature free. The constraint
+        applies to finite values; NaN follows the direction learned at each
+        node and is outside the monotonic contract.
     max_depth : int >= 1 or None
-        Profundidade máxima; raiz tem profundidade zero.
+        Maximum depth; the root has depth zero.
     min_samples_leaf : int >= 1
-        Número mínimo de linhas de peso positivo por filho.
+        Minimum number of positive-weight rows per child.
     max_leaf_nodes : int >= 2 or None
-        Orçamento de folhas; requer crescimento best-first quando definido.
+        Leaf budget; when set, the tree grows best-first.
     random_state : int or None
-        Permutação fixa das features para desempate, reproduzível por seed.
+        Fixed feature permutation used to break ties, reproducible by seed.
     min_impurity_decrease : float >= 0
-        Ganho mínimo para aceitar um split. Em Gini é a redução de impureza
-        ponderada pela massa relativa à raiz; em precision é o aumento da
-        melhor precision filha sobre a precision do pai.
-    max_bins : int in [2,255]
-        Máximo de bins finitos por feature; NaN usa bin separado 0.
+        Minimum gain to accept a split. For Gini it is the impurity decrease
+        weighted by the node mass relative to the root; for precision it is
+        the increase of the best child precision over the parent's.
+    max_bins : int in [2, 255]
+        Maximum number of finite bins per feature; NaN uses the separate bin 0.
     search_stopping : {'bound', 'off', 'heuristic'}, default='bound'
-        'bound': interromper busca apenas por limite superior admissível;
-        'off': varrer todos os candidatos; 'heuristic': reservado, bloqueado
-        até definir e validar a regra aproximada. Não é parada por holdout.
-        O motor ``exact`` sempre faz busca exaustiva; quando ``bound`` é
-        solicitado, ``fit_stats_['search_stopping_effective']`` registra
-        ``'off'``.
+        'bound': stop a scan only through an admissible upper bound; 'off': scan
+        every candidate; 'heuristic': reserved, blocked until the approximate
+        rule is defined and validated. This is not holdout-based stopping. The
+        ``exact`` engine always searches exhaustively; when ``bound`` is
+        requested, ``fit_stats_['search_stopping_effective']`` records ``'off'``.
     gain_tolerance : float >= 0, default=0.0
-        Incremento local mínimo que ainda vale buscar além do incumbente.
-        Zero: bound exato. Positivo: aproximação com tolerância em Gini local,
-        sem garantia de perda máxima em métricas fora do treino. Só atua
-        quando o bound histogramado está ativo.
+        Minimum local improvement still worth searching beyond the incumbent.
+        Zero: exact bound. Positive: an approximation with a tolerance on the
+        local Gini, with no guarantee on out-of-sample loss. Only active when
+        the histogram bound is active.
     n_jobs : int >= 1, default=1
-        Número de threads Numba da variante paralela do motor histogramado.
-        ``1`` preserva o baseline serial; a saída deve ser conferida antes de
-        promover valores maiores.
+        Number of Numba threads for the parallel variant of the histogram
+        engine. ``1`` keeps the serial baseline.
     reuse_parent_histograms : bool, default=False
-        Variante experimental para crescimento depth-first com pesos unitários.
-        Acumula o filho menor e obtém o maior por subtração do histograma pai.
+        Experimental variant for depth-first growth with unit weights: builds
+        the smaller child and gets the larger one by subtracting it from the
+        parent histogram.
     leaf_smoothing : float >= 0, default=0.0
-        Massa de prior adicionada às folhas para prever probabilidades. O
-        prior é a distribuição ponderada das classes na raiz. Zero preserva
-        exatamente as frequências empíricas; não altera splits ou poda.
+        Prior mass added to the leaves when predicting probabilities; the prior
+        is the weighted class distribution at the root. Zero keeps the empirical
+        frequencies exactly; it does not change splits or pruning.
     ccp_alpha : float >= 0, default=0.0
-        Penalidade por folha na pós-poda de custo-complexidade com risco Gini
-        ponderado. Zero preserva a árvore original. Por ora, valores positivos
-        só são aceitos para ``objective='gini'``.
+        Per-leaf penalty of minimal cost-complexity post-pruning with weighted
+        Gini risk. Zero keeps the original tree. For now positive values are
+        only accepted for ``objective='gini'``.
     leaf_shrinkage : float >= 0, default=0.0
-        Shrinkage hierárquico (Agarwal et al., ICML 2022) das probabilidades:
-        cada folha vira uma combinação convexa das frequências dos
-        ancestrais, com peso 1/(1 + λ/massa do pai) por nível. Não altera a
-        árvore; reduz o sobreajuste das folhas pequenas. Exclusivo com
-        ``leaf_smoothing`` e, por ora, com ``monotonic_cst``. Para escolher λ
-        e o número de folhas por validação interna, use
+        Hierarchical shrinkage (Agarwal et al., ICML 2022) of the probabilities:
+        each leaf becomes a convex combination of its ancestors' frequencies,
+        with weight 1 / (1 + lambda / parent mass) per level. It does not change
+        the tree; it reduces overfitting of small leaves. Mutually exclusive
+        with ``leaf_smoothing`` and, for now, with ``monotonic_cst``. To choose
+        lambda and the number of leaves by internal validation, use
         ``FastDecisionTreeClassifierCV``.
 
     Notes
     -----
-    get_params/set_params vêm de BaseEstimator; clone funciona. Isso não
-    significa compatibilidade integral com todos os checks do scikit-learn.
-    Não há validação interna nem seleção automática da poda por holdout.
-    Suavização e pós-poda são opt-in.
+    get_params/set_params come from BaseEstimator and ``clone`` works. There is
+    no internal validation or automatic pruning selection here; smoothing and
+    post-pruning are opt-in.
     """
 
     def __init__(self, *, splitter="hist", max_depth=None, min_samples_leaf=1,
@@ -123,7 +120,7 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
                   min_support=1.0, max_feature_repeats=None, n_jobs=1,
                   reuse_parent_histograms=False, monotonic_cst=None,
                   leaf_smoothing=0.0, ccp_alpha=0.0, leaf_shrinkage=0.0):
-        """Guarde parâmetros sem trabalho de treino, permitindo clone/set_params."""
+        """Store the parameters without any training work (clone/set_params)."""
         self.splitter = splitter
         self.max_depth = max_depth
         self.min_samples_leaf = min_samples_leaf
@@ -146,7 +143,7 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         self.leaf_shrinkage = leaf_shrinkage
 
     def _validate_parameters(self):
-        """Rejeite configurações inválidas antes de alocar dados ou compilar."""
+        """Reject invalid configurations before allocating data or compiling."""
         for name, minimum, allow_none in (("max_depth", 1, True),
                                           ("min_samples_leaf", 1, False),
                                           ("max_leaf_nodes", 2, True),
@@ -214,11 +211,11 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
 
     @staticmethod
     def _feature_names(X):
-        """Retorne nomes de colunas textuais, quando X os fornecer.
+        """Return text column names when X provides them.
 
-        O núcleo aceita qualquer matriz numérica densa; a detecção fica na
-        fachada para manter DataFrame opcional e não introduzir pandas no
-        caminho de treino de arrays NumPy.
+        The core accepts any dense numeric matrix; the detection lives in the
+        facade so that DataFrames stay optional and pandas never enters the
+        training path of NumPy arrays.
         """
         columns = getattr(X, "columns", None)
         if columns is None:
@@ -232,7 +229,7 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         return None
 
     def _validate_feature_names(self, X):
-        """Confira nomes de DataFrame sem rejeitar arrays NumPy no predict."""
+        """Check DataFrame names without rejecting NumPy arrays at predict time."""
         fitted_names = getattr(self, "feature_names_in_", None)
         if fitted_names is None:
             return
@@ -246,19 +243,19 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
             )
 
     def _validate_predict_X(self, X):
-        """Valide X de previsão, incluindo o contrato de nomes de features."""
+        """Validate X for prediction, including the feature-name contract."""
         self._validate_feature_names(X)
         return validate_X(X, n_features=self.n_features_in_)
 
     def _validate_monotonic_cst(self, n_features, n_classes):
-        """Valide direções e devolva um vetor inteiro estável para o fit."""
+        """Validate the directions and return a stable integer vector for fit."""
         if self.monotonic_cst is None:
             return None
         if n_classes != 2:
             raise ValueError("monotonic_cst is only supported for binary classification.")
         try:
             values = np.asarray(self.monotonic_cst)
-        except Exception as exc:  # pragma: no cover - mensagem de contrato
+        except Exception as exc:  # pragma: no cover - contract message
             raise ValueError("monotonic_cst must be a vector of -1, 0 and 1.") from exc
         if values.ndim != 1 or len(values) != n_features:
             raise ValueError(
@@ -276,17 +273,31 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
 
     @staticmethod
     def _finite_leaf_regions(nodes, n_features):
-        """Caixas finitas das folhas; ver ``postprocess.finite_leaf_regions``."""
+        """Finite boxes of the leaves; see ``postprocess.finite_leaf_regions``."""
         return finite_leaf_regions(nodes, n_features)
 
     def _project_monotonic_leaf_probabilities(self, nodes, directions,
                                               positive_class_index):
-        """Delegue a projeção monotônica ao pós-processamento."""
+        """Delegate the monotonic projection to post-processing."""
         return project_monotonic_leaf_probabilities(
             nodes, directions, positive_class_index, self.leaf_smoothing)
 
     def fit(self, X, y, sample_weight=None):
-        """Ajuste com escopo temporário de threads Numba."""
+        """Fit the tree (with a temporary scope for the Numba thread count).
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Numeric features; NaN is accepted.
+        y : array-like of shape (n_samples,)
+            Class labels.
+        sample_weight : array-like of shape (n_samples,), optional
+            Non-negative row weights.
+
+        Returns
+        -------
+        self
+        """
         self._validate_parameters()
         previous_threads = get_num_threads()
         set_num_threads(int(self.n_jobs))
@@ -296,11 +307,11 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
             set_num_threads(previous_threads)
 
     def _fit_impl(self, X, y, sample_weight=None):
-        """Valide dados, aprenda bins quando necessário e construa a árvore.
+        """Validate the data, learn bins when needed and build the tree.
 
-        Todo preparo, bins e crescimento pertence ao fit cronometrado.
-        Publicar atributos terminados em '_' apenas após o builder retornar;
-        treino incompleto não pode aparentar sucesso nem substituir motor.
+        All preparation, binning and growth belongs to the timed fit.
+        Attributes ending in '_' are published only after the builder returns,
+        so an incomplete fit never looks successful.
         """
         fit_start = perf_counter()
         feature_names = self._feature_names(X)
@@ -418,7 +429,7 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         return self
 
     def predict_proba(self, X):
-        """Retorne probabilidades nas colunas de classes_, após treino completo."""
+        """Class probabilities, columns ordered as ``classes_``."""
         check_is_fitted(self, "nodes_")
         return predict_proba_nodes(
             self._validate_predict_X(X), self.nodes_,
@@ -431,18 +442,18 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         )
 
     def predict(self, X):
-        """Retorne classes originais; empate favorece o menor índice em classes_."""
+        """Original class labels; ties go to the lowest index in ``classes_``."""
         probabilities = self.predict_proba(X)
         return self.classes_[probabilities.argmax(axis=1)]
 
     def predict_log_proba(self, X):
-        """Retorne o logaritmo das probabilidades previstas."""
+        """Logarithm of the predicted probabilities."""
         probabilities = self.predict_proba(X)
         with np.errstate(divide="ignore"):
             return np.log(probabilities)
 
     def apply(self, X):
-        """Retorne o índice da folha que recebe cada amostra."""
+        """Index of the leaf that receives each sample."""
         check_is_fitted(self, "nodes_")
         X_validated = self._validate_predict_X(X)
         return np.asarray(apply_nodes(
@@ -452,7 +463,7 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         ), dtype=np.intp)
 
     def get_depth(self):
-        """Retorne a profundidade máxima da árvore; a raiz tem profundidade zero."""
+        """Maximum depth of the tree; the root has depth zero."""
         check_is_fitted(self, "nodes_")
         max_depth = 0
         pending = [(0, 0)]
@@ -467,17 +478,17 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         return max_depth
 
     def get_n_leaves(self):
-        """Retorne o número de folhas publicadas na árvore."""
+        """Number of leaves of the tree."""
         check_is_fitted(self, "nodes_")
         return int(np.count_nonzero(self.nodes_.left == -1))
 
     @property
     def feature_importances_(self):
-        """Importância normalizada pela redução ponderada de Gini.
+        """Importance normalized by the weighted Gini decrease.
 
-        A massa do nó é a soma de ``class_weight``; portanto, quando pesos
-        são usados, a redução segue a massa ponderada e não a contagem bruta
-        de linhas. Árvores sem cortes retornam zeros, como no sklearn.
+        The node mass is the sum of ``class_weight``, so with sample weights
+        the decrease follows the weighted mass, not the raw row count. Trees
+        without cuts return zeros, as in scikit-learn.
         """
         check_is_fitted(self, "nodes_")
         importances = np.zeros(self.n_features_in_, dtype=np.float64)
