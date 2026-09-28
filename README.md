@@ -102,12 +102,26 @@ Numbers are preliminary; the final nested-CV run and the paper will replace them
 Where it does not help: hierarchical targets (e.g. `pol`) and high-order
 interactions (e.g. `electricity`), where one deep tree or boosting is the right shape.
 
-## Related work
+## Credits and inspirations
 
-- Tan, Singh, Nasseri, Agarwal, Yu. "Fast Interpretable Greedy-Tree Sums." *PNAS* (2025); arXiv:2201.11931.
-- Agarwal, Tan, Ronen, Singh, Yu. "Hierarchical Shrinkage: Improving the Accuracy and Interpretability of Tree-Based Methods." *ICML* (2022).
-- Briţa, van der Linden, Demirović. "Optimal Classification Trees for Continuous Feature Data Using Dynamic Programming with Branch-and-Bound." *AAAI* (2025).
-- Pagallo, Haussler. "Boolean Feature Discovery in Empirical Learning." *Machine Learning* (1990).
+bettertrees stands on these ideas; what we took from each:
+
+| work | what bettertrees borrows |
+|---|---|
+| **FIGS** — Tan, Singh, Nasseri, Agarwal, Yu. "Fast Interpretable Greedy-Tree Sums." arXiv:2201.11931 (2022); [imodels](https://github.com/csinva/imodels) | The sum-of-trees model that grows several trees at once, one cut at a time. `FIGSClassifier` re-implements it with Newton/logit leaves and backfitting. |
+| **Hierarchical Shrinkage** — Agarwal, Tan, Ronen, Singh, Yu. *ICML* (2022) | Leaf values shrunk toward their ancestors; the leaf model of the single tree and of its CV. |
+| **XGBoost** — Chen, Guestrin. *KDD* (2016) | The second-order (Newton) gain `G²/(H+λ)` and leaf value `-G/(H+λ)` used by every sum. |
+| **LightGBM** — Ke et al. *NeurIPS* (2017); scikit-learn's HistGradientBoosting | Quantile histograms (≤ 255 bins, missing values in their own bin), the (optional) histogram subtraction trick and best-first, leaf-wise growth. |
+| **MurTree** — Demirović et al. *JMLR* (2022); **ConTree** — Briţa, van der Linden, Demirović. *AAAI* (2025); [pycontree](https://github.com/ConSol-Lab/contree) | Specialized exhaustive search for depth-two trees, the building block of `SumOfOptimalTrees` (here on bins and with the log-loss Newton gain instead of misclassification). ConTree is also our optimal-tree baseline. |
+| **Optimal or greedy?** — van der Linden, Vos, de Weerdt, Verwer, Demirović. *TMLR* (2024) | The finding that optimizing the target objective directly is what makes optimal trees win, and the size–error curve as the evaluation. |
+| **GA2M / EBM** — Lou, Caruana, Gehrke, Hooker. *KDD* (2013); Nori et al. InterpretML (2019) | Additive models with pairwise interactions and shape-function plots (`AdditiveTreeBooster`, `plot_shapes`). |
+| **CART** — Breiman, Friedman, Olshen, Stone (1984) | The tree engine, cost-complexity pruning and the replication problem (Pagallo & Haussler, *Machine Learning*, 1990) that motivates sums. |
+| **SHAP / TreeSHAP** — Lundberg et al. *Nature Machine Intelligence* (2020) | `to_shap_model()` exports the sums for exact TreeSHAP. |
+| **scikit-learn** — Pedregosa et al. *JMLR* (2011) | The estimator API and its compatibility checks. |
+| **Numba** — Lam, Pitrou, Seibert (2015) | All kernels. |
+
+Related and next: SPLIT (Babbar, McTavish, Rudin, Seltzer, *ICML* 2025) for lookahead
+near-optimal trees and TreeFARMS (Xin et al., *NeurIPS* 2022) for Rashomon sets.
 
 ## License
 

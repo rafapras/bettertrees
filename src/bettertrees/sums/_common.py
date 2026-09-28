@@ -1,4 +1,4 @@
-"""Preparo comum: validação, bins e margem base."""
+"""Shared preparation for the sums: validation, binning and base margin."""
 
 import numpy as np
 

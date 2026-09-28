@@ -1,16 +1,16 @@
-"""Vocabulário compartilhado de combinações (razões/diferenças) com teste de forma.
+"""Shared vocabulary of combinations (ratios/differences) chosen by a shape test.
 
-Nenhum nó estima pesos: as combinações entram antes da árvore como colunas
-novas, escolhidas por um teste de forma por par. Para o par (i, j):
+No node estimates weights: the combinations enter before the tree as new
+columns, chosen by a per-pair shape test. For the pair (i, j):
 
-- ``gain_axis``: melhor corte único em x_i ou em x_j (2 folhas);
-- ``gain_quad``: melhor quadrante em (x_i, x_j) (4 células, interação "E");
-- ``gain_comb``: melhor corte único em log(x_i/x_j) ou x_i − x_j (2 folhas).
+- ``gain_axis``: best single cut on x_i or on x_j (2 leaves);
+- ``gain_quad``: best quadrant on (x_i, x_j) (4 cells, an "AND" interaction);
+- ``gain_comb``: best single cut on log(x_i/x_j) or x_i - x_j (2 leaves).
 
-``shape = gain_comb − max(gain_axis, gain_quad)`` > 0 quer dizer que a
-fronteira diagonal explica mais que um eixo e mais que o "E" com 4 células:
-o par tem forma de razão. Escolha o vocabulário num fold separado do que
-avalia a árvore (viés de seleção).
+``shape = gain_comb - max(gain_axis, gain_quad)`` > 0 means the diagonal
+boundary explains more than one axis and more than the 4-cell "AND": the pair
+has a ratio shape. Choose the vocabulary on a fold separate from the one that
+evaluates the tree (selection bias).
 """
 
 import numpy as np

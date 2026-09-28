@@ -1,15 +1,21 @@
-"""Kernels Numba das peças de capacidade (Newton sobre histogramas binados).
+"""Numba kernels of the tree sums (Newton steps on binned histograms).
 
-Mesma regra de ``bettertrees.kernels``: todo kernel que chama outro kernel
-fica neste arquivo (``cache=True`` invalida por arquivo), sem fastmath.
+Same rule as ``bettertrees.kernels``: every kernel that calls another kernel
+lives in this file (``cache=True`` is invalidated per file), no fastmath.
 
-Convenções:
-- bins uint8, NaN (ou linha inelegível) no bin 0; ``nb[j]`` bins usados por j;
-- um corte ``t`` manda à esquerda os bins ``<= t`` (logo o bin 0, NaN, vai
-  sempre para a esquerda; ``t = 0`` é "NaN × resto");
-- histogramas têm três canais: G = soma de g, H = soma de h, W = soma de pesos;
-- pontuação de uma folha: G²/(H + λ); ganho = filhos − pai (≥ 0 se aceito);
-- um filho só é válido com W >= ``min_weight``.
+Conventions:
+- uint8 bins, NaN (or an ineligible row) in bin 0; ``nb[j]`` bins used by j;
+- a cut ``t`` sends bins ``<= t`` left (so bin 0, NaN, always goes left;
+  ``t = 0`` is "NaN vs the rest");
+- histograms have three channels: G = sum of g, H = sum of h, W = sum of weights;
+- leaf score: G^2 / (H + lambda); gain = children - parent (>= 0 if accepted);
+- a child is valid only with W >= ``min_weight``.
+
+The second-order gain and leaf value are those of XGBoost (Chen & Guestrin,
+KDD 2016). The exhaustive depth-2 search over sorted bins is in the spirit of
+the specialized depth-two subroutines of MurTree (Demirović et al., JMLR 2022)
+and ConTree (Briţa, van der Linden, Demirović, AAAI 2025), adapted from
+misclassification on thresholds to the Newton log-loss gain on histogram bins.
 """
 
 import numpy as np

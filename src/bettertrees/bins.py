@@ -1,7 +1,11 @@
-"""Aprendizado e aplicação dos limites de bins (NaN -> bin 0).
+"""Learning and applying bin edges (NaN -> bin 0).
 
-Kernels Numba deste módulo não chamam kernels de outros módulos: o cache do
-Numba invalida por arquivo e não rastreia dependências entre módulos.
+Quantile histograms follow the approach popularized by LightGBM (Ke et al.,
+NeurIPS 2017) and scikit-learn's HistGradientBoosting: at most 255 bins per
+feature, missing values in a dedicated bin.
+
+Numba kernels in this module do not call kernels from other modules: Numba's
+cache is invalidated per file and does not track cross-module dependencies.
 """
 
 from concurrent.futures import ThreadPoolExecutor

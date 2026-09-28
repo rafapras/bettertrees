@@ -1,11 +1,20 @@
-"""Boosting aditivo de árvores ótimas rasas (profundidade 1 ou 2) em logit.
+"""Additive boosting of shallow optimal trees (depth 1 or 2) in logit space.
 
-Cada rodada escolhe a árvore Newton **ótima** de profundidade ``depth`` nos
-bins (busca exaustiva, não gulosa; com mais de ``max_features_d2`` features,
-ótima dentro das de maior ganho de corte único na rodada), com valores de folha por passo de Newton
-e shrinkage ``learning_rate``. Early stopping numa fração de validação. O
-modelo final é uma soma de termos legíveis: cada termo é uma regra de até
-dois cortes que soma um valor ao logit (uma linha de scorecard).
+Each round picks the **optimal** Newton tree of depth ``depth`` over the bins
+(exhaustive search, not greedy; with more than ``max_features_d2`` features,
+optimal within the features with the largest single-cut gain in that round),
+with leaf values from a Newton step and shrinkage ``learning_rate``. Early
+stopping on a validation fraction. The final model is a sum of readable
+terms: each term is a rule of at most two cuts that adds a value to the logit
+(one scorecard line).
+
+References
+----------
+Lou, Caruana, Gehrke, Hooker. "Accurate Intelligible Models with Pairwise
+Interactions." KDD 2013 (GA2M), and Nori, Jenkins, Koch, Caruana.
+"InterpretML: A Unified Framework for Machine Learning Interpretability." 2019
+(EBM): the additive shape of the model.
+Chen, Guestrin. "XGBoost." KDD 2016: second-order gain and leaf values.
 """
 
 import numpy as np

@@ -1,4 +1,4 @@
-"""Screening univariado: ganho Newton do melhor corte e sua estabilidade."""
+"""Univariate screening: Newton gain of the best single cut and its stability."""
 
 import numpy as np
 

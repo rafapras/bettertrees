@@ -1,6 +1,12 @@
-"""Transformações após o crescimento: poda, probabilidades e monotonicidade.
+"""Transformations after growth: pruning, probabilities and monotonicity.
 
-Nenhuma função aqui consulta X de treino: as massas por nó bastam.
+No function here reads the training X: per-node masses are enough.
+
+References
+----------
+Breiman, Friedman, Olshen, Stone. "Classification and Regression Trees." 1984
+(minimal cost-complexity pruning).
+Agarwal, Tan, Ronen, Singh, Yu. "Hierarchical Shrinkage." ICML 2022.
 """
 
 import numpy as np

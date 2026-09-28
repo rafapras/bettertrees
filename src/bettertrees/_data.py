@@ -1,8 +1,8 @@
-"""Contêineres de nós e validação de entrada; sem Numba.
+"""Node containers and input validation; no Numba here.
 
-``NodeArrays`` e ``Split`` apenas agrupam arrays/escalares: não há objeto
-por nó. A validação converte X em float32 C-contiguous e remove linhas de
-peso zero antes de qualquer bin, suporte ou split.
+``NodeArrays`` and ``Split`` only group arrays/scalars: there is no object per
+node. Validation converts X to C-contiguous float32 and drops zero-weight rows
+before any binning, support count or split.
 """
 
 from typing import NamedTuple

@@ -1,14 +1,20 @@
-"""Destilação de um professor LightGBM numa árvore única.
+"""Distillation of a LightGBM teacher into a single tree.
 
-- ``crossfit_teacher``: probabilidade OOF (cada linha prevista por um
-  professor que não a viu), com early stopping interno por fold;
-- ``soft_label_expand``: cada linha vira duas (y=1 com peso w·p, y=0 com peso
-  w·(1−p)); o Gini ponderado do motor otimiza então contra o alvo suave, sem
-  mudar o motor. ``min_samples_leaf`` passa a contar linhas expandidas;
-- ``restate_leaf_masses``: reestima as massas de todos os nós com o y real
-  (a estrutura vem do professor, a palavra final é do dado);
-- ``MixedDepthTree``: topo de profundidade ``top_depth`` num alvo e fundo no
-  outro — o 2×2 de H1 (estrutura) × H2 (refino).
+- ``crossfit_teacher``: out-of-fold probability (each row is predicted by a
+  teacher that did not see it), with internal early stopping per fold;
+- ``soft_label_expand``: each row becomes two (y=1 with weight w*p, y=0 with
+  weight w*(1-p)); the engine's weighted Gini then optimizes against the soft
+  target without changing the engine. ``min_samples_leaf`` counts expanded rows;
+- ``restate_leaf_masses``: re-estimates all node masses with the real y (the
+  structure comes from the teacher, the final word comes from the data);
+- ``MixedDepthTree``: top of depth ``top_depth`` fitted on one target and the
+  bottom on the other.
+
+References
+----------
+Hinton, Vinyals, Dean. "Distilling the Knowledge in a Neural Network." 2015.
+Craven, Shavlik. "Extracting Tree-Structured Representations of Trained
+Networks." NeurIPS 1995.
 """
 
 import numpy as np

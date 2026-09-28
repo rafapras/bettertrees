@@ -1,9 +1,13 @@
-"""Crescimento da árvore: política de expansão sobre o contrato do objetivo.
+"""Tree growth: the expansion policy on top of the objective contract.
 
-O builder não conhece objetivos pelo nome. Tudo que depende do objetivo
-(quando um nó pode ser dividido, qual busca usar, se um ganho é aceito e a
-prioridade no best-first) vem do ``SplitObjectiveSpec`` resolvido uma vez
-por fit em ``splitters.py``.
+The builder does not know objectives by name. Everything that depends on the
+objective (when a node can be split, which search to use, whether a gain is
+accepted and the best-first priority) comes from the ``SplitObjectiveSpec``
+resolved once per fit in ``splitters.py``.
+
+Depth-first and best-first growth follow CART (Breiman, Friedman, Olshen,
+Stone, 1984) and the best-first policy of Shi (2007) / LightGBM's leaf-wise
+growth.
 """
 
 import heapq

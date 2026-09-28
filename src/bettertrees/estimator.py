@@ -1,4 +1,9 @@
-"""API Python mínima da árvore de classificação."""
+"""Minimal Python API of the classification tree (scikit-learn compatible).
+
+The exact engine follows CART (Breiman et al., 1984); the histogram engine
+follows LightGBM (Ke et al., 2017) and scikit-learn's HistGradientBoosting;
+leaf probabilities can use hierarchical shrinkage (Agarwal et al., ICML 2022).
+"""
 
 from numbers import Integral, Real
 from time import perf_counter

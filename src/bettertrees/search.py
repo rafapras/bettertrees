@@ -1,9 +1,9 @@
-"""Busca do melhor corte em um nó: fronteira Python -> kernels Numba.
+"""Best-cut search in one node: the Python -> Numba boundary.
 
-Cada função recebe o nó como fatia [start, end) de ``sample_indices`` e
-devolve um ``Split``. A meta é uma travessia Python->Numba por nó (hist) ou
-por feature (exact), nunca por candidato. Os kernels são lidos como globais
-deste módulo a cada chamada, o que permite instrumentá-los em testes.
+Each function receives the node as a slice [start, end) of ``sample_indices``
+and returns a ``Split``. The goal is one Python -> Numba crossing per node
+(hist) or per feature (exact), never per candidate. Kernels are read as
+globals of this module at every call, which lets tests instrument them.
 """
 
 import numpy as np

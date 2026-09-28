@@ -1,15 +1,22 @@
-"""RuleFit (Friedman & Popescu 2008) com candidatas de árvores ótimas d2.
+"""RuleFit (Friedman & Popescu, 2008) with candidate rules from optimal depth-2 trees.
 
-1. Candidatas: cada nó (exceto a raiz) das árvores do ``AdditiveTreeBooster``
-   d2 vira uma regra de 1 ou 2 condições; duplicatas e regras com suporte
-   fora de [``min_support``, 1 − ``min_support``] saem.
-2. Caminho do lasso (logística L1, colunas escaladas por 1/sd como no
-   RuleFit) sobre as indicadoras: coordinate descent com warm start em Numba
-   (``solver="path"``, padrão), ou fits independentes do liblinear com
-   bisseção em log C (``solver="liblinear"``, referência, ~20× mais lento).
-3. Para cada orçamento b (em **condições**, somadas entre regras), o ponto do
-   caminho de menor penalização com custo <= b; depois reajuste quase sem
-   penalização só nas regras escolhidas (lasso relaxado).
+1. Candidates: every node (except the root) of the trees of a depth-2
+   ``AdditiveTreeBooster`` becomes a rule of 1 or 2 conditions; duplicates and
+   rules with support outside [``min_support``, 1 - ``min_support``] are dropped.
+2. Lasso path (L1 logistic regression, columns scaled by 1/sd as in RuleFit)
+   over the indicators: coordinate descent with warm starts in Numba
+   (``solver="path"``, default), or independent liblinear fits with bisection
+   on log C (``solver="liblinear"``, reference, about 20x slower).
+3. For each budget b (in **conditions**, summed over rules), the least
+   penalized point of the path with cost <= b; then a nearly unpenalized refit
+   on the chosen rules only (relaxed lasso).
+
+References
+----------
+Friedman, Popescu. "Predictive Learning via Rule Ensembles." Annals of
+Applied Statistics, 2008.
+Friedman, Hastie, Tibshirani. "Regularization Paths for Generalized Linear
+Models via Coordinate Descent." Journal of Statistical Software, 2010.
 """
 
 import numpy as np

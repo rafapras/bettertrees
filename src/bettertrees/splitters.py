@@ -1,15 +1,15 @@
-"""Contrato modular entre motor de candidatos e objetivo de split.
+"""Modular contract between the candidate engine and the split objective.
 
-Um objetivo é registrado aqui uma única vez e carrega todo o comportamento
-de que o builder precisa: quando um nó pode ser dividido, qual busca usar em
-cada motor, se o ganho encontrado é aceito e a prioridade no best-first. O
-builder não compara nomes de objetivos.
+An objective is registered here once and carries all the behaviour the builder
+needs: when a node can be split, which search to use on each engine, whether a
+found gain is accepted and the best-first priority. The builder never compares
+objective names.
 
-A resolução ocorre uma vez por ``fit``; nada deste módulo roda por candidato.
-As buscas são lidas de ``search`` no momento da chamada, de modo que testes
-possam substituí-las por referências. Adicionar um objetivo novo começa com
-um kernel próprio em ``kernels.py``, uma busca em ``search.py`` e um spec
-aqui, sem alterar silenciosamente o Gini de produção.
+Resolution happens once per ``fit``; nothing in this module runs per
+candidate. Searches are read from ``search`` at call time, so tests can swap
+them for references. Adding an objective starts with its own kernel in
+``kernels.py``, a search in ``search.py`` and a spec here, without silently
+changing the production Gini.
 """
 
 from collections.abc import Callable

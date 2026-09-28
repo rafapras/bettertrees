@@ -1,4 +1,10 @@
-"""Detecção de interações: FAST sobre resíduo e coocorrência no professor."""
+"""Interaction detection: FAST on the residual and co-occurrence in a teacher.
+
+References
+----------
+Lou, Caruana, Gehrke, Hooker. "Accurate Intelligible Models with Pairwise
+Interactions." KDD 2013 (FAST).
+"""
 
 from itertools import combinations
 

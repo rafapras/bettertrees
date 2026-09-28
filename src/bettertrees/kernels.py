@@ -1,12 +1,16 @@
-"""Todos os kernels Numba de impureza, histogramas, varredura e travessia.
+"""All Numba kernels for impurity, histograms, scans and traversal.
 
-Ficam num único módulo de propósito: ``cache=True`` invalida pelo arquivo que
-define cada função e não rastreia um kernel chamado de outro módulo. Manter
-aqui todo kernel que chama outro kernel evita cache obsoleto. Nada de
-fastmath: reordenações quebram desempates e NaN.
+They live in a single module on purpose: ``cache=True`` is invalidated by the
+file that defines each function and does not track a kernel called from
+another module. Keeping every kernel that calls another kernel here avoids
+stale caches. No fastmath: reorderings break tie-breaking and NaN handling.
 
-Tipos esperados na fronteira: índices/ordens int64, y int32, pesos e massas
-float64, bins uint8, X float32.
+Expected types at the boundary: int64 indices/orders, int32 y, float64
+weights and masses, uint8 bins, float32 X.
+
+The histogram subtraction trick (sibling = parent - child) follows LightGBM
+(Ke et al., 2017); the admissible bound used to stop a scan early follows the
+branch-and-bound literature on optimal trees (e.g. Demirović et al., JMLR 2022).
 """
 
 import numpy as np

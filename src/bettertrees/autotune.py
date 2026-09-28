@@ -1,10 +1,17 @@
-"""Escolha de capacidade e de shrinkage por validação interna.
+"""Choice of capacity and shrinkage by internal cross-validation.
 
-Uma árvore best-first com L folhas é o prefixo das L-1 primeiras expansões
-da árvore com L_max folhas: a ordem de expansão não depende do orçamento.
-Então cada fold interno precisa de UM fit (com L_max); todas as capacidades
-e todos os λ do shrinkage hierárquico são avaliados sobre ele. A escolha
-final é refeita no treino inteiro com os parâmetros vencedores.
+A best-first tree with L leaves is the prefix of the first L-1 expansions of
+the tree with L_max leaves: the expansion order does not depend on the budget.
+So each inner fold needs ONE fit (with L_max); every capacity and every lambda
+of hierarchical shrinkage is scored on it. The final choice is refitted on the
+full training set with the winning parameters.
+
+References
+----------
+Agarwal, Tan, Ronen, Singh, Yu. "Hierarchical Shrinkage: Improving the Accuracy
+and Interpretability of Tree-Based Methods." ICML 2022 (the leaf shrinkage).
+Friedman, Hastie, Tibshirani. "Additive logistic regression: a statistical view
+of boosting." Annals of Statistics, 2000 (best-first growth by gain).
 """
 
 import numpy as np
