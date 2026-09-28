@@ -1,4 +1,4 @@
-"""API pública das somas interpretáveis: sklearn, regras, contribuições e gráficos."""
+"""Public API of the interpretable sums: sklearn, rules, contributions and plots."""
 
 import json
 
@@ -23,10 +23,10 @@ ESTIMATORS = [SumOfOptimalTrees(), FIGSClassifier(), AdditiveTreeBooster(max_rou
 
 def _expected_failures(est):
     if isinstance(est, AdditiveTreeBooster | BoostedOptimalTrees):
-        # early stopping sorteia 15% das LINHAS para validação: repetir uma linha
-        # não equivale a dar peso 2 (a linha repetida pode cair nos dois lados)
+        # early stopping draws 15% of the ROWS for validation: repeating a row
+        # is not the same as weight 2 (the repeated row may land on both sides)
         return {"check_sample_weight_equivalence_on_dense_data":
-                "validação interna por linhas não é invariante a repetição"}
+                "row-based internal validation is not invariant to repetition"}
     return {}
 
 
@@ -37,9 +37,9 @@ def test_sklearn_compatible(estimator, check):
 
 def _data(seed=0, n=3000):
     rng = np.random.default_rng(seed)
-    X = pd.DataFrame(rng.normal(size=(n, 4)), columns=["idade", "renda", "divida", "score"])
-    X.loc[rng.random(n) < 0.1, "renda"] = np.nan
-    logit = X.idade + np.nan_to_num(X.renda) * X.divida + 0.5 * np.sign(X.score)
+    X = pd.DataFrame(rng.normal(size=(n, 4)), columns=["age", "income", "debt", "score"])
+    X.loc[rng.random(n) < 0.1, "income"] = np.nan
+    logit = X.age + np.nan_to_num(X.income) * X.debt + 0.5 * np.sign(X.score)
     y = (rng.random(n) < 1 / (1 + np.exp(-logit))).astype(int)
     return X, y
 
@@ -62,7 +62,7 @@ def test_contributions_reproduce_logit_and_rules_are_consistent(make):
                                atol=1e-12)
     assert list(m.feature_names_in_) == list(X.columns)
     rules = m.rules()
-    # uma linha por folha; as folhas de cada árvore somam a contribuição daquela árvore
+    # one row per leaf; the leaves of each tree add up that tree's contribution
     trees = m._explain_trees()
     assert len(rules) == sum(len(t.leaves) for t in trees)
     for k in range(c.shape[1]):
@@ -76,12 +76,12 @@ def test_rules_merge_path_into_intervals_and_flag_missing():
     X, y = _data()
     m = SumOfOptimalTrees(n_trees=4, depth=2, learning_rate=0.5).fit(X, y)
     text = [c for _, conds, _ in m.rules() for c in conds]
-    # nunca duas condições da mesma feature no mesmo caminho
+    # never two conditions on the same feature in the same path
     for _, conds, _ in m.rules():
         feats = [next(n for n in X.columns if n in c) for c in conds]
         assert len(feats) == len(set(feats))
-    # only renda had NaN in training: only it may show up as "or missing"
-    assert all("renda" in c for c in text if "missing" in c)
+    # only income had NaN in training: only it may show up as "or missing"
+    assert all("income" in c for c in text if "missing" in c)
     assert not m.nan_features_[0] and m.nan_features_[1]
 
 
@@ -89,10 +89,10 @@ def test_shape_functions_and_plots():
     X, y = _data()
     m = SumOfOptimalTrees(n_trees=2, depth=2, extra_stumps=3, learning_rate=0.5).fit(X, y)
     shapes = m.shape_functions()
-    assert shapes  # os tocos são efeitos principais
+    assert shapes  # the stumps are main effects
     for f, (vals, count) in shapes.items():
         assert len(vals) == len(m.bin_edges_[f]) + 2 and count >= 1
-    # toda árvore é efeito principal (conta na forma) ou interação
+    # every tree is a main effect (counted in the shape) or an interaction
     assert len(m.interaction_trees()) + sum(c for _, c in shapes.values()) == len(m.trees_)
     fig = m.plot_shapes()
     assert fig.axes

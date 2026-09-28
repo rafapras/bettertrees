@@ -1,6 +1,6 @@
-"""Implementações Python de referência, usadas apenas em testes e ablações.
+"""Python reference implementations, used only by tests.
 
-Nenhum caminho de produção importa este módulo.
+No production path imports this module.
 """
 
 import numpy as np
@@ -17,21 +17,22 @@ from bettertrees.kernels import (
 def _scan_histogram_feature_reference(mass, count, edges, parent_mass, *, min_samples_leaf,
                                        incumbent_gain, search_stopping="bound", gain_tolerance=0.0,
                                        bound_interval=1, parent_gini=None):
-    """Percorra os bins de uma feature e, opcionalmente, use o bound admissível.
+    """Scan the bins of one feature and optionally use the admissible bound.
 
-    Retorne (bin_threshold, missing_left, gain, n_left, evaluated, skipped).
-    1. Testar corte apenas missing antes de excluir essa possibilidade.
-    2. Varrer prefixos de massas/contagens; testar suporte e ambas as direções.
-    3. Atualizar melhor ganho admissível; construir massas fixas do restante.
-    4. Calcular o máximo dos bounds para NaN-left e NaN-right; cannot_improve
-       autoriza interromper a feature inteira. Se apenas uma direção falhar,
-       descartar somente aquela direção. 'off' sempre termina a varredura.
-    Registrar cortes avaliados/pulados e custo dos bounds para a ablação.
-    Em ganho empatado manter candidato anterior; não parar só por sequência
-    sem melhora. Rejeitar 'heuristic' até especificação estatística explícita.
+    Returns (bin_threshold, missing_left, gain, n_left, evaluated, skipped).
+    1. Try the missing-only cut before excluding that possibility.
+    2. Scan prefixes of masses/counts; check support and both NaN directions.
+    3. Update the best admissible gain; build the fixed masses of the rest.
+    4. Compute the maximum of the bounds for NaN-left and NaN-right;
+       cannot_improve allows stopping the whole feature. If only one direction
+       fails, discard only that direction. 'off' always finishes the scan.
+    Records evaluated/skipped cuts and the cost of the bounds. On tied gains
+    the earlier candidate is kept; never stops just because of a run without
+    improvement. 'heuristic' is rejected until it has an explicit statistical
+    specification.
     """
     if search_stopping not in ("off", "bound"):
-        raise ValueError("search_stopping deve ser off ou bound.")
+        raise ValueError("search_stopping must be 'off' or 'bound'.")
     if (isinstance(bound_interval, (bool, np.bool_))
             or not isinstance(bound_interval, (int, np.integer))
             or bound_interval < 1):
@@ -40,9 +41,9 @@ def _scan_histogram_feature_reference(mass, count, edges, parent_mass, *, min_sa
     count = np.asarray(count, dtype=np.int64)
     parent_mass = np.asarray(parent_mass, dtype=np.float64)
     if mass.ndim != 2 or count.ndim != 1 or mass.shape[0] != len(count):
-        raise ValueError("Histograma com shape inconsistente.")
+        raise ValueError("Histogram with an inconsistent shape.")
     if mass.shape[1] != len(parent_mass):
-        raise ValueError("Massas do histograma e do pai incompatíveis.")
+        raise ValueError("Histogram and parent weights do not match.")
     if len(mass) == 0:
         return -1, False, -np.inf, 0, 0, 0
 
@@ -103,7 +104,7 @@ def _scan_histogram_feature_reference(mass, count, edges, parent_mass, *, min_sa
         prefix_count += int(finite_count[b - 1])
         directions = (False, True) if missing_count > 0 else (False,)
         if prefix_count == 0 or prefix_count == total_rows - missing_count:
-            # Prefixo finito vazio ou completo no nó repete o corte só-NaN.
+            # Empty or complete finite prefix in the node repeats the NaN-only cut.
             directions = ()
         for missing_left in directions:
             left_mass = prefix_mass + (missing_mass if missing_left else 0.0)
@@ -143,21 +144,19 @@ def _find_best_split_exact_reference(X, y, weights, sample_indices, start, end,
                                      n_classes, min_samples_leaf, feature_order,
                                      search_stopping="off", gain_tolerance=0.0,
                                      stats=None, parent_mass=None):
-    """Busque exaustivamente o melhor corte de Gini no nó, sem alterar índices.
+    """Exhaustively find the best Gini cut of the node without changing indices.
 
-    Ordenar finitos por feature; percorrer fronteiras entre valores distintos
-    atualizando massas por classe. Testar NaN à esquerda e à direita, também
-    o corte finitos-versus-NaN (threshold=+inf, missing_left=False).
-    Exigir ambos os filhos com min_samples_leaf linhas ativas e massa > 0.
-    Limiares são pontos médios float64 de valores X float32. Ausência de NaN
-    no treino: encaminhar NaN futuro ao filho com mais linhas; empate direita.
-    Empates de ganho: primeiro feature_order, depois menor limiar, depois NaN
-    à direita. Sem candidato: Split(-1, nan, False, -inf, 0, -1).
-    A versão atual é uma referência serial; a compilação integral fica para a
-    etapa de otimização, depois da medição do custo de cada estágio.
+    Sorts the finite values per feature and walks the boundaries between
+    distinct values, updating per-class masses. Tries NaN on the left and on the
+    right, and also the finite-versus-NaN cut (threshold=+inf,
+    missing_left=False). Both children need min_samples_leaf active rows and
+    positive mass. Thresholds are float64 midpoints of float32 X values. With
+    no NaN in training, future NaN goes to the child with more rows; ties go
+    right. Gain ties: first feature_order, then the smaller threshold, then NaN
+    on the right. Without a candidate: Split(-1, nan, False, -inf, 0, -1).
     """
     if search_stopping not in ("off", "bound"):
-        raise ValueError("search_stopping deve ser off ou bound.")
+        raise ValueError("search_stopping must be 'off' or 'bound'.")
     rows = np.asarray(sample_indices[start:end], dtype=np.int64)
     parent_mass = np.zeros(n_classes, dtype=np.float64)
     for row in rows:
@@ -244,10 +243,10 @@ def _find_best_split_exact_precision_reference(
         X, y, weights, sample_indices, start, end, n_classes,
         min_samples_leaf, feature_order, positive_class, min_precision,
         min_support, stats=None, parent_mass=None):
-    """Referência do objetivo precision (melhor precision filha - pai).
+    """Reference for the precision objective (best child precision - parent's).
 
-    ``parent_mass`` é aceito para substituir a busca real e ignorado: a
-    referência sempre recalcula a massa.
+    ``parent_mass`` is accepted to mirror the real search and ignored: the
+    reference always recomputes the mass.
     """
     rows = np.asarray(sample_indices[start:end], dtype=np.int64)
     parent_mass = np.zeros(n_classes, dtype=np.float64)

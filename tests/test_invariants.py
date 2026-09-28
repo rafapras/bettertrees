@@ -1,8 +1,8 @@
-"""Invariantes em toda a matriz de flags e equivalências metamórficas.
+"""Invariants over the whole flag matrix and metamorphic equivalences.
 
-Correção aqui é "a árvore obedece ao próprio contrato", não "a árvore é
-igual à de antes". As equivalências metamórficas comparam duas execuções
-que, por definição do algoritmo, devem produzir a mesma árvore.
+Correctness here means "the tree obeys its own contract", not "the tree is
+the same as before". The metamorphic equivalences compare two runs that, by
+the definition of the algorithm, must produce the same tree.
 """
 
 import itertools
@@ -18,11 +18,11 @@ def _dataset(kind, seed=0, n=1200, p=6):
     rng = np.random.default_rng(seed)
     X = rng.normal(size=(n, p))
     if kind == "lowcard":
-        # Poucos valores e muitos empates: exercita desempates, cortes com
-        # filhos de mesmo tamanho e bins que cobrem todos os valores.
+        # Few values and many ties: exercises tie-breaks, cuts with equal-size
+        # children and bins that cover every value.
         X = np.round(X * 2.0)
-    # Indicadora 0/1 informativa: seu único corte é o último bin finito, o
-    # candidato de borda que dados contínuos quase nunca tornam ótimo.
+    # Informative 0/1 indicator: its only cut is the last finite bin, the edge
+    # candidate that continuous data almost never makes optimal.
     X[:, 5] = rng.random(n) < 0.3
     X[rng.random(X.shape) < 0.05] = np.nan
     signal = (np.nan_to_num(X[:, 0])
@@ -76,8 +76,8 @@ def test_every_flag_combination_respects_invariants(kind, params):
 
 
 def _reuse_cases():
-    # Sem limite de profundidade: cortes com filhos de mesmo tamanho só
-    # exercitam o reuso quando os filhos ainda buscam corte.
+    # No depth limit: cuts with equal-size children only exercise the reuse
+    # when the children still search for a cut.
     return [(kind, seed, extra)
             for kind in ("binary", "lowcard") for seed in range(4)
             for extra in (dict(), dict(max_feature_repeats=2), dict(n_jobs=3))]
@@ -101,15 +101,15 @@ def _assert_same_tree(a, b, X):
 
 
 def _canonical_partition(model, X):
-    """Rótulos de folha renumerados por ordem de aparição nas linhas."""
+    """Leaf labels renumbered by order of appearance over the rows."""
     leaves = model.apply(X)
     _, first, inverse = np.unique(leaves, return_index=True, return_inverse=True)
     order = np.argsort(np.argsort(first))
     return order[inverse]
 
 
-# Equivalências metamórficas: pares de execuções que o algoritmo define como
-# iguais. Cada uma cobre uma otimização ou atalho do motor.
+# Metamorphic equivalences: pairs of runs the algorithm defines as equal.
+# Each one covers an optimization or shortcut of the engine.
 
 @pytest.mark.parametrize("seed", range(3))
 @pytest.mark.parametrize("growth", [dict(max_depth=7), dict(max_leaf_nodes=24)])
@@ -154,7 +154,7 @@ def test_zero_weight_rows_equal_removed_rows(splitter):
 
 
 def test_integer_weight_equals_duplicated_rows_in_exact():
-    # min_samples_leaf=1: a contagem de linhas não entra na decisão, só a massa.
+    # min_samples_leaf=1: the row count does not enter the decision, only the mass.
     X, y, _ = _dataset("lowcard", 5)
     counts = np.random.default_rng(5).integers(1, 4, size=len(X))
     params = dict(splitter="exact", max_depth=6, min_samples_leaf=1, random_state=0)
@@ -169,8 +169,8 @@ def test_integer_weight_equals_duplicated_rows_in_exact():
 
 @pytest.mark.parametrize("seed", range(3))
 def test_hist_equals_exact_partition_when_bins_cover_all_values(seed):
-    # Os limiares diferem por desenho (bordas globais x ponto médio do nó);
-    # a partição das linhas de treino não.
+    # Thresholds differ by design (global edges vs node midpoint);
+    # the partition of the training rows does not.
     X, y, w = _dataset("lowcard", seed)
     params = dict(max_depth=6, min_samples_leaf=3, random_state=seed,
                   search_stopping="off")
@@ -182,8 +182,8 @@ def test_hist_equals_exact_partition_when_bins_cover_all_values(seed):
 
 
 def test_best_first_tie_goes_to_lower_node_id():
-    # Metades espelhadas: os dois filhos da raiz têm prioridade idêntica, então
-    # só o desempate do heap (menor id) decide qual é expandido.
+    # Mirrored halves: both root children have identical priority, so only
+    # the heap's tie-break (smallest id) decides which one is expanded.
     rng = np.random.default_rng(0)
     half = rng.normal(size=(200, 1)).astype(np.float32)
     labels = (half[:, 0] > 0.3).astype(int)

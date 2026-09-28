@@ -1,18 +1,18 @@
-"""Fachada de compatibilidade: reexporta os módulos do núcleo.
+"""Test facade: re-exports the internals of the package in one namespace.
 
-O código vive em módulos por responsabilidade:
+The code lives in modules by responsibility:
 
-- ``_data``: ``NodeArrays``, ``Split``, validação e alocação de nós;
-- ``bins``: aprendizado e aplicação dos limites de bins;
-- ``kernels``: todos os kernels Numba (um módulo só, por causa do cache);
-- ``search``: busca do melhor corte em um nó (fronteira Python -> Numba);
-- ``builder``: crescimento depth-first/best-first sobre o contrato do objetivo;
-- ``postprocess``: poda, probabilidades e projeção monotônica;
-- ``_reference``: implementações Python usadas só em testes.
+- ``_data``: ``NodeArrays``, ``Split``, validation and node allocation;
+- ``bins``: learning and applying bin edges;
+- ``kernels``: every Numba kernel (a single module, because of the cache);
+- ``search``: best-cut search in one node (the Python -> Numba boundary);
+- ``builder``: depth-first/best-first growth on top of the objective contract;
+- ``postprocess``: pruning, probabilities and monotonic projection;
+- ``_reference`` (tests only): Python reference implementations.
 
-Scripts antigos continuam importando daqui. Código novo deve importar do
-módulo de origem; para instrumentar uma função em teste, substitua-a no
-módulo que a chama (por exemplo ``search`` ou ``builder``), não aqui.
+To instrument a function in a test, replace it in the module that calls it
+(for example ``search`` or ``builder``); assignments on this facade are
+forwarded to the source modules.
 """
 
 import sys as _sys
@@ -92,12 +92,11 @@ _MISSING = object()
 
 
 class _CompatFacade(_types.ModuleType):
-    """Repasse ``core.nome = valor`` aos módulos que usam o mesmo objeto.
+    """Forward ``core.name = value`` to the modules that use the same object.
 
-    Quando tudo vivia em ``core.py``, trocar ``core.find_best_split_hist``
-    (ablações, perfis, testes) alterava a função chamada pelo builder. Sem
-    este repasse, a troca pararia de valer em silêncio e o script mediria o
-    baseline achando que mede a variante.
+    Without this forwarding, replacing ``core.find_best_split_hist`` in a test
+    would silently stop affecting the builder, and the test would measure the
+    baseline while believing it measures the variant.
     """
 
     def __setattr__(self, name, value):

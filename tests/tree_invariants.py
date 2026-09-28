@@ -1,16 +1,16 @@
-"""Invariantes de correção de uma árvore treinada.
+"""Correctness invariants of a fitted tree.
 
-Cada verificação aqui é uma propriedade que vale para QUALQUER árvore correta
-com os parâmetros dados; uma falha é bug, não questão de qualidade. Qualidade
-estatística (log-loss, AUC, tamanho) pertence ao gate de força, não aqui.
+Every check here is a property that holds for ANY correct tree with the given
+parameters; a failure is a bug, not a quality issue. Statistical quality
+(log-loss, AUC, size) belongs to the strength gate, not here.
 
-Grupos:
-- estruturais: árvore conectada, ids coerentes, massas e contagens conservadas;
-- restrições: min_samples_leaf, max_depth, max_leaf_nodes, max_feature_repeats;
-- regras de parada do próprio objetivo: todo corte mantido era admissível;
-- coerência treino->previsão: as linhas de treino caem nas folhas cujas
-  massas o builder gravou; probabilidades válidas;
-- monotonicidade nas regiões finitas.
+Groups:
+- structural: connected tree, coherent ids, conserved masses and counts;
+- constraints: min_samples_leaf, max_depth, max_leaf_nodes, max_feature_repeats;
+- the objective's own stopping rules: every kept cut was admissible;
+- train -> predict coherence: training rows land on the leaves whose masses the
+  builder stored; valid probabilities;
+- monotonicity on the finite regions.
 """
 
 import numpy as np
@@ -19,7 +19,7 @@ from bettertrees.kernels import gini
 
 
 def _active(X, y, sample_weight):
-    """Linhas que participam do treino (peso positivo), como no fit."""
+    """Rows that take part in training (positive weight), as in fit."""
     X = np.asarray(X, dtype=np.float32)
     classes, encoded = np.unique(np.asarray(y), return_inverse=True)
     weights = (np.ones(len(X)) if sample_weight is None
@@ -29,7 +29,7 @@ def _active(X, y, sample_weight):
 
 
 def _depths_and_paths(nodes, n_features):
-    """Profundidade e contagem de uso de cada feature no caminho até o nó."""
+    """Depth and per-feature usage count on the path to each node."""
     n = len(nodes.left)
     depth = np.full(n, -1, dtype=np.int64)
     path_counts = np.zeros((n, n_features), dtype=np.int64)
@@ -54,21 +54,21 @@ def check_structure(nodes, n_features):
     n = len(nodes.left)
     left, right = nodes.left, nodes.right
     internal = left != -1
-    assert np.array_equal(internal, right != -1), "filho esquerdo sem direito"
+    assert np.array_equal(internal, right != -1), "left child without a right child"
     parents = np.zeros(n, dtype=np.int64)
     for node in np.flatnonzero(internal):
         for child in (int(left[node]), int(right[node])):
-            assert node < child < n, f"id de filho inválido em {node}"
+            assert node < child < n, f"invalid child id at {node}"
             parents[child] += 1
     assert parents[0] == 0, "raiz tem pai"
-    assert np.all(parents[1:] == 1), "nó sem pai ou com dois pais"
+    assert np.all(parents[1:] == 1), "node without a parent or with two parents"
     depth, _ = _depths_and_paths(nodes, n_features)
-    assert np.all(depth >= 0), "nó inalcançável a partir da raiz"
-    assert np.all(nodes.feature[~internal] == -1), "folha com feature"
-    assert np.all(np.isnan(nodes.threshold[~internal])), "folha com limiar"
+    assert np.all(depth >= 0), "node unreachable from the root"
+    assert np.all(nodes.feature[~internal] == -1), "leaf with a feature"
+    assert np.all(np.isnan(nodes.threshold[~internal])), "leaf with a threshold"
     features = nodes.feature[internal]
-    assert np.all((features >= 0) & (features < n_features)), "feature inválida"
-    assert not np.isnan(nodes.threshold[internal]).any(), "corte sem limiar"
+    assert np.all((features >= 0) & (features < n_features)), "invalid feature"
+    assert not np.isnan(nodes.threshold[internal]).any(), "cut without a threshold"
 
 
 def check_conservation(nodes):
@@ -82,8 +82,8 @@ def check_conservation(nodes):
             nodes.class_weight[node],
             nodes.class_weight[left] + nodes.class_weight[right],
             rtol=1e-10, atol=1e-12 * root_total,
-            err_msg=f"massa não conservada no nó {node}")
-    assert np.all(nodes.class_weight.sum(axis=1) > 0), "nó com massa zero"
+            err_msg=f"mass not conserved at node {node}")
+    assert np.all(nodes.class_weight.sum(axis=1) > 0), "node with zero mass"
 
 
 def check_constraints(model, nodes):
@@ -92,7 +92,7 @@ def check_constraints(model, nodes):
     depth, path_counts = _depths_and_paths(nodes, n_features)
     leaves = nodes.left == -1
     msl = params["min_samples_leaf"]
-    assert np.all(nodes.n_samples >= msl), "nó abaixo de min_samples_leaf"
+    assert np.all(nodes.n_samples >= msl), "node below min_samples_leaf"
     assert np.all(nodes.n_samples[~leaves] >= 2 * msl)
     if params["max_depth"] is not None:
         assert depth.max() <= params["max_depth"]
@@ -105,7 +105,7 @@ def check_constraints(model, nodes):
 
 
 def check_split_admissibility(model, nodes):
-    """Todo corte mantido respeita a regra de parada do objetivo."""
+    """Every kept cut respects the objective's stopping rule."""
     params = model.get_params()
     root_total = float(nodes.class_weight[0].sum())
     tolerance = 1e-9
@@ -115,11 +115,11 @@ def check_split_admissibility(model, nodes):
         right = nodes.class_weight[int(nodes.right[node])]
         total = parent.sum()
         if params["objective"] == "gini":
-            assert gini(parent) > 0.0, f"nó puro dividido: {node}"
+            assert gini(parent) > 0.0, f"pure node split: {node}"
             local = gini(parent) - (left.sum() * gini(left)
                                     + right.sum() * gini(right)) / total
             weighted = total / root_total * local
-            assert local >= -tolerance, f"ganho Gini negativo no nó {node}"
+            assert local >= -tolerance, f"negative Gini gain at node {node}"
             assert weighted >= params["min_impurity_decrease"] - tolerance
         else:
             positive = model.classes_.tolist().index(params["positive_class"])
@@ -127,22 +127,22 @@ def check_split_admissibility(model, nodes):
             assert total >= support and parent[positive] > 0
             parent_precision = parent[positive] / total
             assert parent_precision < params["min_precision"], (
-                f"nó já elegível foi dividido: {node}")
+                f"node already eligible was split: {node}")
             children = [child[positive] / child.sum()
                         for child in (left, right) if child.sum() >= support]
-            assert children, f"nenhum filho com suporte no nó {node}"
+            assert children, f"no child with support at node {node}"
             gain = max(children) - parent_precision
             assert gain > 0.0
             assert gain >= params["min_impurity_decrease"] - tolerance
 
 
 def check_train_coherence(model, X, y, sample_weight=None):
-    """As linhas de treino chegam às folhas com as massas gravadas no fit."""
+    """Training rows reach the leaves with the masses stored at fit."""
     nodes = model.nodes_
     X_active, encoded, weights, classes = _active(X, y, sample_weight)
     np.testing.assert_array_equal(model.classes_, classes)
     leaf_ids = model.apply(X_active)
-    assert np.all(nodes.left[leaf_ids] == -1), "apply devolveu nó interno"
+    assert np.all(nodes.left[leaf_ids] == -1), "apply returned an internal node"
     counts = np.bincount(leaf_ids, minlength=len(nodes.left))
     leaves = np.flatnonzero(nodes.left == -1)
     np.testing.assert_array_equal(counts[leaves], nodes.n_samples[leaves])
@@ -173,7 +173,7 @@ def check_probabilities(model, X):
 
 
 def check_monotonic(model, X, rng, n_pairs=400):
-    """Aumentar uma feature restrita (valores finitos) não viola a direção."""
+    """Increasing a constrained feature (finite values) does not violate the direction."""
     directions = model.monotonic_cst_
     if directions is None:
         return
@@ -189,11 +189,11 @@ def check_monotonic(model, X, rng, n_pairs=400):
         change = (model.predict_proba(moved)[:, positive]
                   - model.predict_proba(base)[:, positive])
         assert np.all(directions[feature] * change >= -1e-12), (
-            f"monotonicidade violada na feature {feature}")
+            f"monotonicity violated on feature {feature}")
 
 
 def _node_rows(nodes, X):
-    """Índices das linhas (de X) que chegam a cada nó."""
+    """Indices of the rows (of X) that reach each node."""
     rows = [None] * len(nodes.left)
     rows[0] = np.arange(len(X))
     stack = [0]
@@ -220,7 +220,7 @@ def _gini_rows(mass):
 
 
 def _score(parent, left, right, objective, positive, min_support):
-    """Ganho local de cada candidato (vetorizado); -inf quando inválido."""
+    """Local gain of each candidate (vectorized); -inf when invalid."""
     if objective == "gini":
         total = parent.sum()
         gain = _gini_rows(parent) - (left.sum(-1) * _gini_rows(left)
@@ -236,12 +236,12 @@ def _score(parent, left, right, objective, positive, min_support):
 
 
 def _feature_candidates(X, y_enc, w, rows, feature, splitter, edges, n_classes, msl):
-    """Todos os cortes do motor numa feature, com massas e linhas à esquerda.
+    """Every cut the engine considers on a feature, with left masses and rows.
 
-    Candidatos: limiares (bordas de bin no hist, pontos entre valores
-    distintos do nó no exact) x direção de NaN, mais o corte só-NaN.
-    Devolve ``(left_mass[k, C], left_rows(i))`` só com os cortes que
-    respeitam ``min_samples_leaf``. Independente dos kernels; usa só numpy.
+    Candidates: thresholds (bin edges in hist, points between the node's
+    distinct values in exact) x NaN direction, plus the NaN-only cut. Returns
+    ``(left_mass[k, C], left_rows(i))`` with only the cuts that respect
+    ``min_samples_leaf``. Independent of the kernels; uses numpy only.
     """
     values = X[rows, feature]
     missing = np.isnan(values)
@@ -266,7 +266,7 @@ def _feature_candidates(X, y_enc, w, rows, feature, splitter, edges, n_classes, 
     if n_missing:
         cand_n.append(n_left)
         cand_nan.append(np.ones(len(n_left), dtype=bool))
-        if len(sorted_values):  # só-NaN: finitos à esquerda, NaN à direita
+        if len(sorted_values):  # NaN-only: finite values left, NaN right
             cand_n.append(np.array([len(sorted_values)]))
             cand_nan.append(np.array([False]))
     cand_n = np.concatenate(cand_n)
@@ -284,7 +284,7 @@ def _feature_candidates(X, y_enc, w, rows, feature, splitter, edges, n_classes, 
 
 
 def _best_candidate_gain(model, X, y_enc, w, rows, allowed_features):
-    """Força bruta: melhor ganho local entre todos os candidatos do motor."""
+    """Brute force: best local gain among every candidate of the engine."""
     params = model.get_params()
     n_classes = len(model.classes_)
     positive = (model.classes_.tolist().index(params["positive_class"])
@@ -303,11 +303,11 @@ def _best_candidate_gain(model, X, y_enc, w, rows, allowed_features):
 
 
 def check_local_optimality(model, X, y, sample_weight=None, atol=1e-9):
-    """Cada corte é o melhor candidato do nó; folhas livres não tinham corte.
+    """Each cut is the best candidate of its node; free leaves had no cut.
 
-    Pega erros que as verificações estruturais não veem: um corte escolhido
-    com o histograma errado continua gerando uma árvore bem formada.
-    Não vale com ``gain_tolerance > 0`` (busca aproximada por desenho).
+    Catches errors the structural checks miss: a cut chosen from the wrong
+    histogram still produces a well-formed tree. Does not hold with
+    ``gain_tolerance > 0`` (approximate search by design).
     """
     params = model.get_params()
     if params["gain_tolerance"] > 0:
@@ -337,9 +337,9 @@ def check_local_optimality(model, X, y, sample_weight=None, atol=1e-9):
             chosen = float(_score(parent, left[None], right[None], params["objective"],
                                   positive, params["min_support"])[0])
             assert chosen >= best - atol, (
-                f"nó {node}: corte escolhido {chosen:.12g} < melhor {best:.12g}")
+                f"node {node}: chosen cut {chosen:.12g} < best {best:.12g}")
             continue
-        # Folha: se ainda era divisível, nenhum candidato podia ser aceito.
+        # Leaf: if it was still splittable, no candidate could be accepted.
         n_rows = len(rows[node])
         mass = nodes.class_weight[node]
         if n_rows < 2 * params["min_samples_leaf"] or len(allowed) == 0:
@@ -358,11 +358,11 @@ def check_local_optimality(model, X, y, sample_weight=None, atol=1e-9):
                 continue
             priority = best
         assert priority < params["min_impurity_decrease"] + atol, (
-            f"folha {node} tinha corte aceitável (prioridade {priority:.12g})")
+            f"leaf {node} had an acceptable cut (priority {priority:.12g})")
 
 
 def _chosen_priority(model, nodes, node, root_total):
-    """Prioridade best-first do corte gravado no nó (a partir das massas)."""
+    """Best-first priority of the cut stored in the node (from the masses)."""
     params = model.get_params()
     parent = nodes.class_weight[node]
     left = nodes.class_weight[int(nodes.left[node])]
@@ -377,7 +377,7 @@ def _chosen_priority(model, nodes, node, root_total):
 
 
 def _leaf_priority(model, nodes, node, rows, depth, allowed, X, y_enc, w, root_total):
-    """Prioridade com que a folha teria entrado no heap; None se não entraria."""
+    """Priority with which the leaf would have entered the heap; None if it would not."""
     params = model.get_params()
     mass = nodes.class_weight[node]
     if len(rows) < 2 * params["min_samples_leaf"] or len(allowed) == 0:
@@ -403,15 +403,15 @@ def _leaf_priority(model, nodes, node, rows, depth, allowed, X, y_enc, w, root_t
 
 
 def check_best_first_order(model, X, y, sample_weight=None, atol=1e-9):
-    """Com orçamento de folhas, cada expansão era a de maior prioridade.
+    """With a leaf budget, each expansion had the highest priority.
 
-    Os ids dos filhos saem na ordem de expansão, então a sequência pode ser
-    reconstruída da árvore: no passo t, a fronteira é o conjunto de nós já
-    criados e ainda não expandidos que entrariam no heap. O nó expandido
-    precisa ter prioridade >= a de todos eles; no empate, o heap prefere o
-    menor id. Pega heap invertido, FIFO, prioridade sem o peso da massa ou
-    desempate trocado. Não vale após poda (ids deixam de seguir a expansão)
-    nem com busca aproximada (``gain_tolerance > 0``).
+    Children ids follow the expansion order, so the sequence can be rebuilt
+    from the tree: at step t, the frontier is the set of nodes already created
+    and not yet expanded that would enter the heap. The expanded node must have
+    priority >= all of them; on ties the heap prefers the smallest id. Catches
+    an inverted heap, FIFO, a priority without the mass weight or a swapped
+    tie-break. Does not hold after pruning (ids no longer follow the expansion)
+    or with approximate search (``gain_tolerance > 0``).
     """
     params = model.get_params()
     if (params["max_leaf_nodes"] is None or params["ccp_alpha"] > 0
@@ -437,31 +437,31 @@ def check_best_first_order(model, X, y, sample_weight=None, atol=1e-9):
                                             depth[node], allowed, X_active,
                                             y_enc, w, root_total)
     for step, node in enumerate(sequence):
-        created_before = int(nodes.left[node])  # ids < isto já existiam
+        created_before = int(nodes.left[node])  # ids below this already existed
         chosen = priority[int(node)]
         for other in range(created_before):
             if other == node or priority[other] is None:
                 continue
             if other in expanded_at and expanded_at[other] < step:
-                continue  # já expandido antes
+                continue  # already expanded before
             rival = priority[other]
             assert rival <= chosen + atol, (
-                f"passo {step}: expandiu nó {node} (prioridade {chosen:.12g}) "
-                f"com nó {other} na fronteira (prioridade {rival:.12g})")
+                f"step {step}: expanded node {node} (priority {chosen:.12g}) "
+                f"with node {other} on the frontier (priority {rival:.12g})")
             if abs(rival - chosen) <= 1e-15 * max(1.0, abs(chosen)):
                 assert node < other, (
-                    f"passo {step}: empate de prioridade resolvido para o "
-                    f"nó {node} em vez do menor id {other}")
+                    f"step {step}: priority tie resolved to "
+                    f"node {node} instead of the smallest id {other}")
 
 
 def check_tree_invariants(model, X, y, sample_weight=None, rng=None):
-    """Rode todos os invariantes de correção sobre um modelo treinado."""
+    """Run every correctness invariant on a fitted model."""
     rng = np.random.default_rng(0) if rng is None else rng
     nodes = model.nodes_
     check_structure(nodes, model.n_features_in_)
     check_conservation(nodes)
     check_constraints(model, nodes)
-    # A poda só remove cortes; os que ficam continuam admissíveis.
+    # Pruning only removes cuts; the remaining ones stay admissible.
     check_split_admissibility(model, nodes)
     check_train_coherence(model, X, y, sample_weight)
     check_local_optimality(model, X, y, sample_weight)
@@ -471,13 +471,13 @@ def check_tree_invariants(model, X, y, sample_weight=None, rng=None):
 
 
 def _impurity(mass):
-    """Gini não normalizado: massa x Gini (0 para nó vazio)."""
+    """Unnormalized Gini: mass x Gini (0 for an empty node)."""
     mass = np.asarray(mass, dtype=np.float64)
     return float(mass.sum() * _gini_rows(mass))
 
 
 def _best_leaf_impurity(X, y_enc, w, rows, splitter, edges, n_classes, msl):
-    """Menor impureza da folha após no máximo um corte (força bruta)."""
+    """Smallest leaf impurity after at most one cut (brute force)."""
     parent = np.bincount(y_enc[rows], w[rows], n_classes)
     best = _impurity(parent)
     if len(rows) < 2 * msl:
@@ -497,12 +497,12 @@ def _best_leaf_impurity(X, y_enc, w, rows, splitter, edges, n_classes, msl):
 
 
 def _best_block_reduction(X, y_enc, w, rows, stats, edges, n_classes):
-    """Maior queda de impureza de um bloco de profundidade 2 (força bruta).
+    """Largest impurity decrease of a depth-2 block (brute force).
 
-    Mesmo espaço do motor: raiz com ``root_splitter``, cada filho com no
-    máximo um corte de ``child_splitter``, ``min_samples_leaf`` em todas as
-    folhas. Filhos resolvidos de forma independente dada a raiz, o que é
-    exato porque a impureza total é a soma das duas metades.
+    Same space as the engine: root with ``root_splitter``, each child with at
+    most one ``child_splitter`` cut, ``min_samples_leaf`` on every leaf.
+    Children are solved independently given the root, which is exact because
+    the total impurity is the sum of both halves.
     """
     msl = stats["min_samples_leaf"]
     parent = np.bincount(y_enc[rows], w[rows], n_classes)
@@ -527,13 +527,13 @@ def _best_block_reduction(X, y_enc, w, rows, stats, edges, n_classes):
 
 
 def check_multilevel_blocks(model, X, y, sample_weight=None, rtol=1e-9):
-    """Cada bloco do multinível é o ótimo de profundidade 2 do seu nó.
+    """Each block of the multilevel tree is the depth-2 optimum of its node.
 
-    Blocos começam nas profundidades 0 e 2. Para cada um, a queda de
-    impureza da subárvore escolhida (raiz + até dois cortes) tem de igualar
-    a da melhor subárvore da força bruta: menor é busca incompleta, maior
-    é corte fora do espaço de candidatos. Bloco que virou folha não podia
-    ter queda positiva. Não diz nada sobre a árvore composta.
+    Blocks start at depths 0 and 2. For each one, the impurity decrease of the
+    chosen subtree (root + up to two cuts) must equal that of the best
+    brute-force subtree: smaller is an incomplete search, larger is a cut
+    outside the candidate space. A block that became a leaf could not have a
+    positive decrease. Says nothing about the composed tree.
     """
     stats = model.fit_stats_
     nodes = model.nodes_
@@ -555,7 +555,7 @@ def check_multilevel_blocks(model, X, y, sample_weight=None, rtol=1e-9):
             chosen = _impurity(mass) - sum(_impurity(nodes.class_weight[leaf])
                                            for leaf in leaves)
         if stats["max_depth"] - depth[block] == 1:
-            # Profundidade ímpar: o último bloco é um corte guloso único.
+            # Odd depth: the last block is a single greedy cut.
             base = _impurity(np.bincount(y_enc[rows[block]], w[rows[block]], n_classes))
             best = max(0.0, base - _best_leaf_impurity(
                 X_active, y_enc, w, rows[block], stats["root_splitter"],
@@ -565,5 +565,5 @@ def check_multilevel_blocks(model, X, y, sample_weight=None, rtol=1e-9):
                                          model.bin_edges_, n_classes)
         tolerance = rtol * max(1.0, float(mass.sum()))
         assert abs(chosen - best) <= tolerance, (
-            f"bloco no nó {block} (profundidade {depth[block]}): queda "
-            f"escolhida {chosen:.12g} != ótimo do bloco {best:.12g}")
+            f"block at node {block} (depth {depth[block]}): chosen "
+            f"decrease {chosen:.12g} != block optimum {best:.12g}")

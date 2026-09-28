@@ -1,4 +1,4 @@
-"""Testes de contratos e primitivas; não atestam treino ou performance."""
+"""Tests of contracts and primitives; they do not attest training quality or speed."""
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -310,7 +310,7 @@ def test_leaf_smoothing_preserves_tree_and_uses_weighted_root_prior(splitter):
     np.testing.assert_array_equal(raw.apply(X), smooth.apply(X))
     np.testing.assert_array_equal(raw.nodes_.feature, smooth.nodes_.feature)
     np.testing.assert_allclose(raw.predict_proba(X), [[1, 0], [1, 0], [0, 1], [0, 1]])
-    # Raiz: classe positiva 2/5. Folhas: (0+2*2/5)/(3+2),
+    # Root: positive class 2/5. Leaves: (0+2*2/5)/(3+2),
     # (2+2*2/5)/(2+2).
     np.testing.assert_allclose(smooth.predict_proba(X)[:, 1],
                                [0.16, 0.16, 0.7, 0.7])
@@ -456,7 +456,7 @@ def test_node_class_mass_respects_indices_weights_and_slice():
 @pytest.mark.parametrize("classes", [2, 7])
 @pytest.mark.parametrize("missing_left", [False, True])
 def test_bound_dominates_every_remaining_split(classes, missing_left):
-    """Compare o bound com enumeração exaustiva dos cortes posteriores."""
+    """Compare the bound with an exhaustive enumeration of the later cuts."""
     rng = np.random.default_rng(987)
     for _ in range(20):
         hist = rng.uniform(0.01, 20, (12, classes))
@@ -483,7 +483,7 @@ def test_stopping_requires_bound_and_distinguishes_tolerance():
 
 @pytest.mark.parametrize("n_classes", [2, 7])
 def test_bound_trigger_matches_exhaustive_scan_when_tolerance_is_zero(n_classes):
-    """O trigger só descarta cortes incapazes de superar o incumbente."""
+    """The trigger only discards cuts unable to beat the incumbent."""
     rng = np.random.default_rng(4100 + n_classes)
     for trial in range(30):
         n_finite_bins = 18 + trial % 7
@@ -511,13 +511,13 @@ def test_bound_trigger_matches_exhaustive_scan_when_tolerance_is_zero(n_classes)
 
 @pytest.mark.parametrize("n_classes", [2, 5])
 def test_numba_histogram_scan_matches_python_reference(n_classes):
-    """Compare o kernel com a referência em suportes, NaN e bins vazios."""
+    """Compare the kernel with the reference on supports, NaN and empty bins."""
     rng = np.random.default_rng(6200 + n_classes)
     for trial in range(24):
         n_bins = (2, 3, 9, 18)[trial % 4]
         counts_by_class = rng.integers(0, 6, size=(n_bins, n_classes))
         if trial % 3 == 0:
-            counts_by_class[0] = 0  # sem NaN no treino
+            counts_by_class[0] = 0  # no NaN in training
         if trial % 4 == 0:
             counts_by_class[2::3] = 0  # bins internos vazios
         count = counts_by_class.sum(axis=1).astype(np.int64)
@@ -595,7 +595,7 @@ def test_critical_numba_kernels_compile_in_nopython_mode():
 
 
 def test_hist_hot_path_batches_candidates_without_python_per_cut(monkeypatch):
-    """A varredura de muitos cortes cruza Python->Numba uma vez por nó."""
+    """Scanning many cuts crosses Python -> Numba once per node."""
     rng = np.random.default_rng(318)
     X = rng.normal(size=(768, 12)).astype(np.float32)
     y = (X[:, 0] + 0.4 * X[:, 1] > 0).astype(np.int32)
@@ -617,7 +617,7 @@ def test_hist_hot_path_batches_candidates_without_python_per_cut(monkeypatch):
         return gini_kernel(*args)
 
     def unexpected_scalar_scan(*args, **kwargs):
-        pytest.fail("A varredura escalar voltou ao caminho Python por feature.")
+        pytest.fail("The scalar scan went back to the per-feature Python path.")
 
     monkeypatch.setattr(search, "_scan_histograms_row_major_numba", observed_batch)
     monkeypatch.setattr(search, "scan_histogram_feature", unexpected_scalar_scan)
@@ -644,7 +644,7 @@ def test_exact_hot_path_calls_numba_without_python_per_candidate(monkeypatch, ob
         params.update(positive_class=1, min_precision=0.95, min_support=5.0)
         kernel_name = "_scan_exact_feature_precision_numba"
     else:
-        # Gini: um único kernel por nó coleta, ordena e varre todas as features.
+        # Gini: a single kernel per node gathers, sorts and scans every feature.
         kernel_name = "_find_best_split_exact_gini_numba"
     FastDecisionTreeClassifier(**params).fit(X, y)
     kernel = getattr(core, kernel_name)
@@ -659,7 +659,7 @@ def test_exact_hot_path_calls_numba_without_python_per_candidate(monkeypatch, ob
     assert model.fit_stats_["exact_candidates_evaluated"] > 100
     assert model.fit_stats_["nodes_split"] == 1
     if objective == "gini":
-        assert calls == [len(X)]  # uma chamada, no nó raiz
+        assert calls == [len(X)]  # one call, at the root node
     else:
         assert len(calls) == X.shape[1]
         assert all(count > 1 for count in calls)
@@ -713,8 +713,8 @@ def test_parent_hist_reuse_matches_depth_first_tree_and_probabilities():
 
 
 def test_parent_hist_reuse_handles_equal_size_children():
-    # Regressão: com filhos de mesmo tamanho, o direito recebia o histograma
-    # do esquerdo. Estes dados produzem ao menos um corte 34/34.
+    # Regression: with equal-size children, the right one received the left
+    # child's histogram. This data produces at least one 34/34 cut.
     rng = np.random.default_rng(1)
     X = rng.normal(size=(3000, 8))
     X[rng.random(X.shape) < 0.05] = np.nan
@@ -953,7 +953,7 @@ def test_pure_nodes_stop_but_xor_zero_gain_nodes_can_continue(splitter):
 
 
 def _max_feature_repetition_per_path(model):
-    """Conte a maior repetição de uma feature em qualquer caminho."""
+    """Count the largest repetition of a feature on any path."""
     pending = [(0, {})]
     maximum = 0
     while pending:
@@ -1012,8 +1012,8 @@ def test_monotonic_cst_is_global_over_finite_leaf_regions(direction):
 
 
 def test_monotonic_2d_touching_boxes_do_not_create_cycle():
-    # Quatro quadrantes: caixas em lados opostos se tocam em outra feature,
-    # mas não compartilham nenhum ponto finito por causa de > no filho direito.
+    # Four quadrants: boxes on opposite sides touch on another feature,
+    # but share no finite point because of > in the right child.
     nodes = allocate_nodes(7, 2)
     nodes.left[0], nodes.right[0], nodes.feature[0] = 1, 2, 0
     nodes.left[1], nodes.right[1], nodes.feature[1] = 3, 4, 1

@@ -14,7 +14,7 @@ authors = [{ name = "rafapras" }]
 dependencies = [
     "numpy>=1.26",
     "numba>=0.60",
-    "scikit-learn>=1.6",  # validate_data e tags de estimador
+    "scikit-learn>=1.6",  # validate_data and estimator tags
 ]
 
 [project.optional-dependencies]
@@ -38,16 +38,13 @@ line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
-# estilo que não briga com kernels Numba (laços explícitos, min/max manuais)
+# a style that does not fight Numba kernels (explicit loops, manual min/max)
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 ignore = [
-    "E731",    # lambdas curtas para nomes de feature
-    "RUF001",  # texto em português (acentos, sinais)
-    "RUF002",
-    "RUF003",
-    "B905",    # zip sem strict: pares de mesmo tamanho por construção
-    "SIM108",  # ternário nem sempre é mais legível
-    "RUF046",  # int(round(x)) com escalares numpy: explícito de propósito
+    "E731",    # short lambdas for feature names
+    "B905",    # zip without strict: equal-length pairs by construction
+    "SIM108",  # a ternary is not always more readable
+    "RUF046",  # int(round(x)) on numpy scalars: explicit on purpose
 ]
 
 [tool.ruff.lint.per-file-ignores]

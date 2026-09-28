@@ -1,4 +1,4 @@
-"""Capacidade: kernels contra força bruta e um DGP funcional por peça."""
+"""Tree sums: kernels against brute force and one functional DGP per piece."""
 
 from itertools import product
 
@@ -46,7 +46,7 @@ def _small(seed=0, n=120, p=3, B=5):
 
 
 def _brute_cut(mask_rows, Xb, g, h, w, nb, lam, minw):
-    """Melhor corte único dentro de mask_rows por força bruta."""
+    """Best single cut within mask_rows by brute force."""
     G, H = g[mask_rows].sum(), h[mask_rows].sum()
     best = 0.0
     for f in range(Xb.shape[1]):
@@ -106,7 +106,7 @@ def _ratio_data(seed, n=6000, p=5, kind="ratio"):
     X = np.exp(rng.normal(size=(n, p)))
     if kind == "ratio":
         z = 3.0 * (np.log(X[:, 0]) - np.log(X[:, 1]))
-    else:  # interação "E" nos mesmos dois eixos
+    else:  # "AND" interaction on the same two axes
         z = 3.0 * ((X[:, 0] > 1.0) & (X[:, 1] < 1.0)) - 1.5
     y = (rng.random(n) < _sig(z)).astype(int)
     return X, y
@@ -155,7 +155,7 @@ def test_screen_ranks_informative_feature_first_and_stable():
     s = screen_features(X, y, n_boot=10)
     assert np.argmax(s["gain"]) in (0, 1)
     assert s["top_k_freq"][0] == 1.0 and s["top_k_freq"][1] == 1.0
-    assert s["threshold_iqr"][1] < 0.5  # sign(x1): corte perto de 0, estável
+    assert s["threshold_iqr"][1] < 0.5  # sign(x1): cut near 0, stable
 
 
 def test_additive_booster_beats_single_tree_on_additive_dgp():
@@ -183,7 +183,7 @@ def test_additive_booster_depth2_captures_interaction():
             < _log_loss(y[te], d1.predict_proba(X[te])[:, 1]) - 0.02)
 
 
-# ------------------------------------------------------------ destilação
+# ------------------------------------------------------------ distillation
 
 def test_crossfit_teacher_is_out_of_fold():
     X, y = _additive_interaction(4, n=1500)
@@ -192,9 +192,9 @@ def test_crossfit_teacher_is_out_of_fold():
     flipped = y.copy()
     flipped[fold0] = 1 - flipped[fold0]
     b = crossfit_teacher(X, flipped, params=dict(n_estimators=60), folds=a["fold"])
-    # trocar os rótulos do fold 0 não muda a previsão das suas linhas...
+    # swapping the labels of fold 0 does not change the prediction of its rows...
     np.testing.assert_array_equal(a["p"][fold0], b["p"][fold0])
-    # ...mas muda a das outras (o professor delas viu o fold 0)
+    # ...but changes the others' (their teacher saw fold 0)
     assert not np.allclose(a["p"][~fold0], b["p"][~fold0])
     assert np.isfinite(a["p"]).all() and (a["fold"] >= 0).all()
 
@@ -254,7 +254,7 @@ def test_screen_without_bootstrap_returns_gain_only():
     assert np.argmax(s["gain"]) in (0, 1) and np.isnan(s["threshold_iqr"]).all()
 
 
-# ------------------------------------------------------------ árvores pequenas
+# ------------------------------------------------------------ small trees
 
 from bettertrees.experimental import RuleFitLasso  # noqa: E402
 from bettertrees.sums import FIGSClassifier, SumOfOptimalTrees  # noqa: E402
@@ -262,7 +262,7 @@ from bettertrees.sums._kernels import best_depth3  # noqa: E402
 
 
 def _brute_tree(mask, depth, Xb, g, h, w, nb, lam, minw):
-    """Ganho da melhor árvore de profundidade <= depth nas linhas de mask."""
+    """Gain of the best tree of depth <= depth on the rows of mask."""
     if depth == 0:
         return 0.0
     G, H = g[mask].sum(), h[mask].sum()
@@ -303,8 +303,8 @@ def test_depth3_beats_two_levels_on_three_way_interaction():
 
 
 def test_stumps_beat_one_d3_on_wide_additive_dgp():
-    # com 3 termos uma d3 (8 folhas) é exata; a vantagem aditiva aparece com
-    # mais termos que a profundidade: 5 tocos (5 cortes) × uma d3 (7 cortes)
+    # with 3 terms a depth-3 tree (8 leaves) is exact; the additive advantage shows
+    # with more terms than depth: 5 stumps (5 cuts) vs one depth-3 tree (7 cuts)
     rng = np.random.default_rng(12)
     n = 6000
     X = rng.normal(size=(n, 6))
@@ -385,7 +385,7 @@ def test_l1_path_matches_sklearn_saga_at_same_lambda():
     lam = 0.004
     betas, b0s, done = l1_logistic_path(indptr, indices, scale, y, np.array([0.05, 0.02, lam]),
                                         np.ones(m), 1e9, 1e-12, 100, 5000, np.zeros(m), np.nan)
-    # warm start a partir do 2º ponto chega à mesma solução
+    # a warm start from the 2nd point reaches the same solution
     wb, w0, wd = l1_logistic_path(indptr, indices, scale, y, np.array([lam]), np.ones(m), 1e9,
                                   1e-12, 100, 5000, betas[1].copy(), b0s[1])
     np.testing.assert_allclose(wb[0], betas[done - 1], atol=1e-6)
@@ -409,7 +409,7 @@ def test_rulefit_path_selects_like_liblinear_and_is_faster():
         assert a.n_conditions(bud) <= bud
         la = _log_loss(y[3000:], a.predict_proba(X[3000:], budget=bud)[:, 1])
         lb = _log_loss(y[3000:], b.predict_proba(X[3000:], budget=bud)[:, 1])
-        assert la < lb + 0.02  # mesma qualidade (a seleção pode diferir nos empates)
+        assert la < lb + 0.02  # same quality (the selection may differ on ties)
     assert ta < tb
 
 
@@ -447,7 +447,7 @@ def test_d2_feature_cap_is_noop_below_cap_and_restricts_above():
     full = AdditiveTreeBooster(max_rounds=15, max_features_d2=None).fit(X, y)
     capped_hi = AdditiveTreeBooster(max_rounds=15, max_features_d2=12).fit(X, y)
     np.testing.assert_array_equal(full.decision_function(X), capped_hi.decision_function(X))
-    # as duas triagens enxergam x2, que só age em interação (sem efeito principal)
+    # both screenings see x2, which only acts through an interaction (no main effect)
     for screen in ("lgbm", "fast"):
         capped = AdditiveTreeBooster(max_rounds=15, max_features_d2=4,
                                      feature_screen=screen).fit(X, y)
@@ -463,14 +463,14 @@ def test_greedy_sum_is_paired_control_of_optimal_sum():
     rng = np.random.default_rng(51)
     n = 4000
     X = rng.normal(size=(n, 6))
-    # XOR puro: sem efeito principal, o guloso não acha a raiz certa
+    # pure XOR: no main effect, the greedy search misses the right root
     y = (rng.random(n) < _sig(3.0 * np.sign(X[:, 0] * X[:, 1]))).astype(int)
     tr, te = slice(0, 3000), slice(3000, None)
     opt = SumOfOptimalTrees(n_trees=1, depth=2).fit(X[tr], y[tr])
     gre = SumOfOptimalTrees(n_trees=1, depth=2, search="greedy").fit(X[tr], y[tr])
     assert (_log_loss(y[te], opt.predict_proba(X[te])[:, 1])
             < _log_loss(y[te], gre.predict_proba(X[te])[:, 1]) - 0.1)
-    # efeito aditivo forte num eixo: guloso e ótimo escolhem a mesma raiz
+    # strong additive effect on one axis: greedy and optimal pick the same root
     y2 = (rng.random(n) < _sig(2.0 * X[:, 2] + 0.5 * X[:, 3])).astype(int)
     a = SumOfOptimalTrees(n_trees=1, depth=2).fit(X, y2).trees_[0]
     b = SumOfOptimalTrees(n_trees=1, depth=2, search="greedy").fit(X, y2).trees_[0]

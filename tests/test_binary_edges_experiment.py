@@ -1,4 +1,4 @@
-"""Equivalência do atalho 0/1 com os quantis preservados."""
+"""Equivalence of the 0/1 shortcut with the preserved quantiles."""
 
 import numpy as np
 from _core import _fit_bin_edges_binary, fit_bin_edges, transform_bins

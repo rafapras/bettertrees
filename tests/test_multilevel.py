@@ -214,7 +214,7 @@ def _block_dataset(kind, seed, n=240, p=4):
     rng = np.random.default_rng(seed)
     X = rng.normal(size=(n, p))
     if kind == "lowcard":
-        X = np.round(X * 1.5)  # empates e filhos de mesmo tamanho
+        X = np.round(X * 1.5)  # ties and equal-size children
     X[:, 3] = rng.random(n) < 0.3
     X[rng.random(X.shape) < 0.06] = np.nan
     signal = (np.nan_to_num(X[:, 0]) * np.nan_to_num(X[:, 1])
@@ -262,8 +262,8 @@ def test_every_block_is_the_depth2_optimum(kind, root, child, depth,
 @pytest.mark.parametrize("kind", ["binary", "lowcard", "multiclass"])
 @pytest.mark.parametrize("depth, bins", [(2, 4), (2, 16), (4, 16), (4, 64)])
 def test_block_kernel_matches_per_candidate_search(kind, depth, bins):
-    # Pesos unitários: o kernel de histogramas conjuntos deve reproduzir a
-    # busca por candidato (mesma árvore e mesmo número de candidatos).
+    # Unit weights: the joint-histogram kernel must reproduce the
+    # per-candidate search (same tree and same number of candidates).
     X, y, _ = _block_dataset(kind, seed=depth + bins, n=500, p=5)
     kw = dict(max_depth=depth, max_bins=bins, min_samples_leaf=4,
               candidate_limit=10 ** 9, random_state=3)

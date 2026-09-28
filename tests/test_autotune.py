@@ -1,4 +1,4 @@
-"""Shrinkage hierárquico das folhas e escolha de capacidade por CV interna."""
+"""Hierarchical leaf shrinkage and the choice of capacity by inner CV."""
 
 import numpy as np
 import pytest
@@ -51,7 +51,7 @@ def test_shrinkage_is_convex_combination_of_ancestor_frequencies(classes):
                 node = parent[node]
             lo, hi = freq[path].min(axis=0), freq[path].max(axis=0)
             assert np.all(probs[leaf] >= lo - 1e-12) and np.all(probs[leaf] <= hi + 1e-12)
-    # λ enorme: tudo volta para a raiz
+    # huge lambda: everything goes back to the root
     np.testing.assert_allclose(hierarchical_shrinkage_probabilities(nodes, 1e12),
                                np.tile(freq[0], (len(freq), 1)), atol=1e-6)
 
@@ -83,7 +83,7 @@ def test_prefix_of_largest_tree_equals_direct_fit(splitter):
     for leaves in (2, 5, 16, 37, 64):
         direct = FastDecisionTreeClassifier(max_leaf_nodes=leaves, **params).fit(X, y)
         truncated = prefix_leaf_ids(X, big.nodes_, steps, leaves)
-        # mesma partição das linhas (ids diferem entre as duas árvores)
+        # same partition of the rows (ids differ between the two trees)
         pairs = set(zip(truncated.tolist(), direct.apply(X).tolist()))
         assert len(pairs) == len(set(truncated.tolist())) == len(set(direct.apply(X).tolist()))
 

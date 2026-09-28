@@ -1,4 +1,4 @@
-"""Correção da acumulação por linha frente ao splitter preservado."""
+"""Correctness of row-wise accumulation against the preserved splitter."""
 
 import _core as core
 import numpy as np
