@@ -24,6 +24,7 @@ pip install -e ".[lightgbm,plot]"   # LightGBM feature screening (p > 128) and p
 | one tree | `FastDecisionTreeClassifierCV` | a single tree; leaf count and hierarchical shrinkage chosen by CV |
 | **interpretable (4–16 cuts)** | `FIGSClassifier`, `SumOfOptimalTrees` | `logit(p) = base + Σ tree_k(x)`, a few shallow trees |
 | medium capacity (32–64 cuts) | `SumOfOptimalTrees` | the same sum with more trees |
+| medium capacity, counted in distinct cuts | `CompactTreeBooster` | shrunken boosting of optimal trees; identical trees merged, so re-used cuts are free |
 | free capacity | `AdditiveTreeBooster` | a long sum of optimal depth-2 trees with early stopping |
 
 - `FIGSClassifier(max_splits=b)` grows several trees at once, one cut at a time
@@ -72,6 +73,23 @@ To score a row, add the base and one value per tree, then apply the sigmoid.
 
 The Numba kernels compile on first use (about 5-10 s once per environment) and are cached afterwards.
 
+## Editing a model and its Rashomon view
+
+Every sum can be edited mechanically and re-estimated, and all outputs (rules,
+contributions, SHAP export) follow the edit:
+
+```python
+model.prune(tree, node)                      # collapse a cut into a leaf
+model.set_cut(tree, node, "income", 50_000)  # move / replace a cut (snaps to a bin edge)
+model.drop_tree(k); model.merge_duplicates()
+model.set_leaf_value(tree, leaf, 0.0)        # business override
+model.refit_leaves(X, y)                     # re-estimate the leaves for the new structure
+model.cut_alternatives(X_val, y_val, tree, node, epsilon=0.01)  # near-equivalent cuts
+```
+
+`RashomonFIGSClassifier` searches structures by mutating cuts and keeps the set within
+`epsilon` of the best validation loss; `BaggedFIGSClassifier` picks cuts by a bootstrap vote.
+
 ## Interpretation API
 
 Every sum exposes the same output:
@@ -99,6 +117,8 @@ dataset, Wilcoxon test. Log-loss change is relative, AUC change in points.
 | FIGS vs a LightGBM with at most b cuts whose tree shape is tuned too (4 / 8 / 16 / 32 cuts) | −1.3% / −0.8% / −0.8% / −0.5% log-loss (wins 20/0, 18/2, 14/6, 14/6; p ≤ 0.02), tie at 64 |
 | FIGS vs rpart (R, cost-complexity pruning) and one LightGBM tree (4 / 8 / 16 cuts) | rpart: −3.9% / −5.5% / −4.5%; LightGBM tree: −2.4% / −3.2% / −3.5% (19–20 wins of 20) |
 | Our FIGS (logit, backfitting) vs FIGS from imodels (4 / 8 / 16 cuts) | −0.5% / −2.5% / −4.4% log-loss (15–17 wins of 20) |
+| Family chosen by inner CV (FIGS with learning rate / backfitting, compact booster, sum of d2) vs LightGBM with ≤ b cuts, shape tuned (4 / 8 / 16 / 32 / 64 / 128 cuts; eligible budgets, 19 datasets) | −1.4% / −1.0% / −0.9% / −0.4% / −0.4% log-loss (p ≤ 0.005), tie at 128 (+0.02%, 7/8) |
+| The same vs XGBoost with ≤ b cuts, shape tuned | −1.4% / −1.1% / −0.8% / −0.5% / −0.7% (p ≤ 0.005); −0.2% at 128 (10/5, p = 0.12) |
 | Optimal vs greedy search inside the same sum (16 / 32 / 64 cuts) | −0.2% / −0.3% / −0.5% log-loss (p < 0.01) |
 | Additive booster (free capacity) vs tuned LightGBM / XGBoost / CatBoost | median +1.2% / +0.7% / +1.1% log-loss, −0.2 AUC points, 15–50× faster including tuning |
 | Single-tree engine vs scikit-learn (same depth) | 3.0× faster (hist) and 2.9× (exact) for n ≥ 10k; for n ≤ 3k use `splitter="exact"` (1.7×) |

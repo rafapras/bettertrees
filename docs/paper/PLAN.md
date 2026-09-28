@@ -103,3 +103,24 @@ data, 0 elsewhere), depth-3 optimal trees (slow, no gain over d2).
 - [ ] Speed table for the single-tree engine vs sklearn (≥ 2× claim).
 - [ ] Area-under-size–loss metric in `eff_claims.py`.
 - [ ] Next phase (separate paper?): Rashomon sets of sums + rule mutation.
+
+
+## Update 2026-09-28: 128 cuts, compact booster, editing API
+
+- Budgets now go to 128; a budget b is *eligible* for a dataset only with
+  n_train >= 50 b and minority events >= 10 b (EPV rule); below that, 64-128 cut
+  comparisons mostly measure split-to-split variance.
+- Controls: LightGBM and XGBoost with <= b cuts and tuned shape; LightGBM with
+  early stopping and the same distinct-cut accounting (identical trees merged).
+- Family chosen by inner CV (FIGS with learning rate and optional backfitting,
+  CompactTreeBooster, sum of d2) vs shape-tuned LightGBM, 10k-100k rows:
+  -1.4 / -1.0 / -0.9 / -0.4 / -0.4 % at 4-64 cuts (p <= 0.005), tie at 128.
+  Vs XGBoost: significant to 64, -0.2 % at 128 (ns).
+- Why 128 ties: on HR, bank, credit, credit_card, heloc our tuned models use 30-90
+  cuts (more overfits); with backfitting after every cut the learning rate of FIGS
+  is undone at large budgets (old leaves return to the full Newton step), so
+  backfit_sweeps=0 is a tuning option. `pol` (hierarchical target) is the only
+  large loss.
+- Negative results: bagged cut vote, forest distillation and cut-mutation Rashomon
+  search do not beat FIGS at 16-64 cuts; exhaustive depth-3 terms are 10-100x
+  slower for mixed gains.
