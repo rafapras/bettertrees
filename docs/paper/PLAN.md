@@ -124,3 +124,9 @@ data, 0 elsewhere), depth-3 optimal trees (slow, no gain over d2).
 - Negative results: bagged cut vote, forest distillation and cut-mutation Rashomon
   search do not beat FIGS at 16-64 cuts; exhaustive depth-3 terms are 10-100x
   slower for mixed gains.
+- Also tried for 128 cuts, all without a gain (paired with the same tuned
+  LightGBM cell, 5 losing + 3 winning datasets, 2 splits): grow-then-prune
+  (reduced-error pruning, `sums/prune.py`; +1.2 % median), leaf-wise
+  LightGBM-shaped candidate trees in the compact booster (+0.4 to +1.1 %),
+  no early stopping (+1.1 %). HR, heloc and credit_card lose in every shape,
+  including LightGBM's own; the 128-cut claim is "tie with LightGBM and XGBoost".
