@@ -43,7 +43,7 @@ and store the effective hyperparameters in `lam_` and `learning_rate_`.
 from sklearn.datasets import load_breast_cancer
 from bettertrees import FIGSClassifier
 
-X, y = load_breast_cancer(return_X_y=True, as_frame=True)
+X, y = load_breast_cancer(return_X_y=True, as_frame=True)  # a DataFrame (needs pandas) gives feature names
 model = FIGSClassifier(max_splits=6).fit(X, y)
 print(model.explain())
 ```
@@ -69,6 +69,8 @@ tree 5:
 ```
 
 To score a row, add the base and one value per tree, then apply the sigmoid.
+
+The Numba kernels compile on first use (about 5-10 s once per environment) and are cached afterwards.
 
 ## Interpretation API
 
