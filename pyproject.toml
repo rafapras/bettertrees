@@ -18,10 +18,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# triagem de features por importância de ganho quando p > 128 (sem ela, triagem FAST)
+# gain-importance feature screening when p > 128 (without it: FAST screening)
 lightgbm = ["lightgbm>=4.0"]
-bench = ["lightgbm>=4.0", "psutil", "threadpoolctl", "optuna>=3.0", "pandas", "scipy"]
-test = ["pytest>=8", "scipy", "pandas", "matplotlib", "shap"]
+test = ["pytest>=8", "scipy", "pandas", "matplotlib", "shap", "lightgbm>=4.0"]
 plot = ["matplotlib>=3.8"]
 
 [tool.setuptools.packages.find]
