@@ -490,3 +490,19 @@ def test_sum_extra_stumps_fill_budget():
     assert len(full.trees_) == 4 and all(len(t.feature) == 3 for t in full.trees_[2:])
     assert (_log_loss(y, full.predict_proba(X)[:, 1])
             < _log_loss(y, base.predict_proba(X)[:, 1]))
+
+
+def test_figs_max_delta_step_prevents_divergence_on_rare_class():
+    # rare class (~0.5%) concentrated in a small region: the full Newton step on the
+    # nearly pure leaf is huge; the cap keeps leaves bounded and the ranking right
+    from sklearn.metrics import roc_auc_score
+    from bettertrees import FIGSClassifier
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(40000, 5))
+    logit = -7 + 4.0 * (X[:, 0] > 1.5) + 3.0 * (X[:, 1] > 1.0)
+    y = (rng.random(len(X)) < 1 / (1 + np.exp(-logit))).astype(int)
+    capped = FIGSClassifier(max_splits=4, max_delta_step=1.0).fit(X, y)
+    assert max(np.abs(t.value).max() for t in capped.trees_) < 10
+    assert roc_auc_score(y, capped.predict_proba(X)[:, 1]) > 0.8
+    # the default keeps the original FIGS behaviour
+    assert FIGSClassifier().max_delta_step is None

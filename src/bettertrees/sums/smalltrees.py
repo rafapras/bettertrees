@@ -183,8 +183,14 @@ class _AdditiveTrees(TreeEditMixin, InterpretableSumMixin, ClassifierMixin, Base
         """
         g, h = grad_hess(target, margin, w)
         ids = tree.leaf_ids(Xb)
-        tree.value = tree.value + self.learning_rate_ * newton_leaf_values(
-            ids, g, h, len(tree.feature), self.lam_)
+        step = newton_leaf_values(ids, g, h, len(tree.feature), self.lam_)
+        cap = getattr(self, "max_delta_step", None)
+        if cap is not None:
+            # a single Newton step on a nearly pure leaf of rare-class data can be hundreds
+            # of logits (tiny hessian); capping it, as XGBoost's max_delta_step, prevents the
+            # divergence and the sign flips that backfitting then produces
+            step = np.clip(step, -cap, cap)
+        tree.value = tree.value + self.learning_rate_ * step
         new = tree.value[ids]
         return new, margin - contrib + new
 
@@ -355,6 +361,11 @@ class FIGSClassifier(_AdditiveTrees):
         Shrinkage of every Newton step on the leaves (1 = the full step of the
         original FIGS). Below 1 it regularizes large budgets on small data,
         where full steps overfit.
+    max_delta_step : float or None, default=None
+        Cap on each leaf's Newton step, in logits (as XGBoost's ``max_delta_step``).
+        With a rare class, a full step on a nearly pure leaf can reach hundreds of
+        logits and backfitting then flips signs; a cap of about 1 prevents it
+        (recommended for imbalanced data with small budgets). None = no cap.
 
     Attributes
     ----------
@@ -371,7 +382,7 @@ class FIGSClassifier(_AdditiveTrees):
     """
 
     def __init__(self, *, max_splits=16, max_trees=None, lam="auto", min_weight=20.0,
-                 max_bins=32, backfit_sweeps=1, learning_rate=1.0):
+                 max_bins=32, backfit_sweeps=1, learning_rate=1.0, max_delta_step=None):
         self.max_splits = max_splits
         self.max_trees = max_trees
         self.lam = lam
@@ -379,6 +390,7 @@ class FIGSClassifier(_AdditiveTrees):
         self.max_bins = max_bins
         self.backfit_sweeps = backfit_sweeps
         self.learning_rate = learning_rate
+        self.max_delta_step = max_delta_step
 
     def fit(self, X, y, sample_weight=None, y_soft=None):
         """Fit the sum.
