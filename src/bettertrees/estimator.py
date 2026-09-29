@@ -72,10 +72,9 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         the increase of the best child precision over the parent's.
     max_bins : int in [2, 255]
         Maximum number of finite bins per feature; NaN uses the separate bin 0.
-    search_stopping : {'bound', 'off', 'heuristic'}, default='bound'
+    search_stopping : {'bound', 'off'}, default='bound'
         'bound': stop a scan only through an admissible upper bound; 'off': scan
-        every candidate; 'heuristic': reserved, blocked until the approximate
-        rule is defined and validated. This is not holdout-based stopping. The
+        every candidate. This is not holdout-based stopping. The
         ``exact`` engine always searches exhaustively; when ``bound`` is
         requested, ``fit_stats_['search_stopping_effective']`` records ``'off'``.
     gain_tolerance : float >= 0, default=0.0
@@ -319,8 +318,6 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         feature_names = self._feature_names(X)
         splitter_spec = resolve_splitter_spec(
             self.splitter, self.objective, self.search_stopping)
-        if self.search_stopping == "heuristic":
-            raise NotImplementedError("The heuristic stopping rule is not specified/validated yet.")
         prepare_start = perf_counter()
         X, encoded, weights, classes = prepare_training_data(X, y, sample_weight)
         prepare_seconds = perf_counter() - prepare_start

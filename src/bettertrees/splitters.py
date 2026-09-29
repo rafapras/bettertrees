@@ -184,8 +184,8 @@ def resolve_splitter_spec(splitter, objective="gini", search_stopping="bound"):
         raise ValueError(f"objective={objective!r} does not support splitter='hist'.")
     if splitter == "exact" and not spec.supports_exact:
         raise ValueError(f"objective={objective!r} does not support splitter='exact'.")
-    if search_stopping not in ("off", "bound", "heuristic"):
-        raise ValueError("search_stopping must be 'off', 'bound' or 'heuristic'.")
+    if search_stopping not in ("off", "bound"):
+        raise ValueError("search_stopping must be 'off' or 'bound'.")
     if search_stopping == "bound" and not spec.supports_admissible_bound:
         raise ValueError(f"objective={objective!r} has no admissible bound.")
     return spec

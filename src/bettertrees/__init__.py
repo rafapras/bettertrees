@@ -6,10 +6,15 @@
 - ``FIGSClassifier``: FIGS (Tan et al., 2022) in logit space.
 - ``BaggedFIGSClassifier``, ``RashomonFIGSClassifier``: FIGS with a bagged or
   Rashomon structure selection (medium budgets).
+- ``CompactTreeBooster``: shrunken boosting of optimal trees counted in distinct
+  cuts (identical trees merged); the no-tuning choice above 64 cuts.
 - ``AdditiveTreeBooster``: a long sum of optimal depth-1/2 trees with early stopping.
+- ``LightGBMRefitClassifier`` / ``from_lightgbm``: a LightGBM model imported as an
+  editable sum, with its leaves refitted jointly.
 
-The sums expose ``rules()``, ``explain()``, ``to_dict()``,
-``predict_contributions()``, ``plot_shapes()`` and ``plot_contributions()``.
+The sums (binary classification) expose ``rules()``, ``explain()``, ``to_dict()``,
+``predict_contributions()``, ``plot_shapes()``, ``plot_contributions()`` and the
+editing API; the single tree is multiclass and has ``export_text()``.
 ``bettertrees.experimental`` has no API stability guarantee.
 """
 
