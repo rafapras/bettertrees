@@ -18,6 +18,14 @@ import numpy as np
 from bettertrees.kernels import gini
 
 
+def _params(model):
+    """get_params() plus the cut objective and its options, which the public tree keeps
+    as class attributes (only PrecisionTreeClassifier exposes them as parameters)."""
+    params = model.get_params()
+    for name in ("objective", "positive_class", "min_precision", "min_support"):
+        params.setdefault(name, getattr(model, name))
+    return params
+
 def _active(X, y, sample_weight):
     """Rows that take part in training (positive weight), as in fit."""
     X = np.asarray(X, dtype=np.float32)
@@ -87,7 +95,7 @@ def check_conservation(nodes):
 
 
 def check_constraints(model, nodes):
-    params = model.get_params()
+    params = _params(model)
     n_features = model.n_features_in_
     depth, path_counts = _depths_and_paths(nodes, n_features)
     leaves = nodes.left == -1
@@ -106,7 +114,7 @@ def check_constraints(model, nodes):
 
 def check_split_admissibility(model, nodes):
     """Every kept cut respects the objective's stopping rule."""
-    params = model.get_params()
+    params = _params(model)
     root_total = float(nodes.class_weight[0].sum())
     tolerance = 1e-9
     for node in np.flatnonzero(nodes.left != -1):
@@ -163,7 +171,7 @@ def check_probabilities(model, X):
     np.testing.assert_allclose(proba.sum(axis=1), 1.0, rtol=0, atol=1e-12)
     np.testing.assert_array_equal(model.predict(X),
                                   model.classes_[proba.argmax(axis=1)])
-    params = model.get_params()
+    params = _params(model)
     if (params["monotonic_cst"] is None and params["leaf_smoothing"] == 0
             and params.get("leaf_shrinkage", 0) == 0):
         leaf_mass = model.nodes_.class_weight[model.apply(X)]
@@ -285,7 +293,7 @@ def _feature_candidates(X, y_enc, w, rows, feature, splitter, edges, n_classes, 
 
 def _best_candidate_gain(model, X, y_enc, w, rows, allowed_features):
     """Brute force: best local gain among every candidate of the engine."""
-    params = model.get_params()
+    params = _params(model)
     n_classes = len(model.classes_)
     positive = (model.classes_.tolist().index(params["positive_class"])
                 if params["objective"] == "precision" else -1)
@@ -309,7 +317,7 @@ def check_local_optimality(model, X, y, sample_weight=None, atol=1e-9):
     histogram still produces a well-formed tree. Does not hold with
     ``gain_tolerance > 0`` (approximate search by design).
     """
-    params = model.get_params()
+    params = _params(model)
     if params["gain_tolerance"] > 0:
         return
     nodes = model.nodes_
@@ -363,7 +371,7 @@ def check_local_optimality(model, X, y, sample_weight=None, atol=1e-9):
 
 def _chosen_priority(model, nodes, node, root_total):
     """Best-first priority of the cut stored in the node (from the masses)."""
-    params = model.get_params()
+    params = _params(model)
     parent = nodes.class_weight[node]
     left = nodes.class_weight[int(nodes.left[node])]
     right = nodes.class_weight[int(nodes.right[node])]
@@ -378,7 +386,7 @@ def _chosen_priority(model, nodes, node, root_total):
 
 def _leaf_priority(model, nodes, node, rows, depth, allowed, X, y_enc, w, root_total):
     """Priority with which the leaf would have entered the heap; None if it would not."""
-    params = model.get_params()
+    params = _params(model)
     mass = nodes.class_weight[node]
     if len(rows) < 2 * params["min_samples_leaf"] or len(allowed) == 0:
         return None
@@ -413,7 +421,7 @@ def check_best_first_order(model, X, y, sample_weight=None, atol=1e-9):
     tie-break. Does not hold after pruning (ids no longer follow the expansion)
     or with approximate search (``gain_tolerance > 0``).
     """
-    params = model.get_params()
+    params = _params(model)
     if (params["max_leaf_nodes"] is None or params["ccp_alpha"] > 0
             or params["gain_tolerance"] > 0):
         return
@@ -567,3 +575,17 @@ def check_multilevel_blocks(model, X, y, sample_weight=None, rtol=1e-9):
         assert abs(chosen - best) <= tolerance, (
             f"block at node {block} (depth {depth[block]}): chosen "
             f"decrease {chosen:.12g} != block optimum {best:.12g}")
+
+
+def make_tree(**params):
+    """A single tree from a parameter dict that may name the objective.
+
+    ``objective="precision"`` builds the experimental ``PrecisionTreeClassifier``;
+    ``"gini"`` (or no objective) the public ``FastDecisionTreeClassifier``."""
+    from bettertrees import FastDecisionTreeClassifier
+    from bettertrees.experimental import PrecisionTreeClassifier
+    params = dict(params)
+    objective = params.pop("objective", "gini")
+    if objective == "precision":
+        return PrecisionTreeClassifier(**params)
+    return FastDecisionTreeClassifier(**params)

@@ -6,6 +6,7 @@ from sklearn.base import clone
 from sklearn.metrics import log_loss
 
 from bettertrees import FastDecisionTreeClassifier
+from bettertrees.experimental import PrecisionTreeClassifier
 
 
 @pytest.mark.parametrize("splitter", ["hist", "exact"])
@@ -47,8 +48,8 @@ def test_public_binary_workflow_with_missing_weights_and_postprocessing(splitter
 def test_public_precision_workflow_remains_usable(splitter):
     X = np.arange(24, dtype=np.float32).reshape(-1, 1)
     y = (X[:, 0] >= 12).astype(np.int32)
-    model = FastDecisionTreeClassifier(
-        splitter=splitter, objective="precision", positive_class=1,
+    model = PrecisionTreeClassifier(
+        splitter=splitter, positive_class=1,
         min_precision=0.9, min_support=5, search_stopping="off",
         max_depth=2, leaf_smoothing=1.0, random_state=0).fit(X, y)
     p = model.predict_proba([[5], [18]])

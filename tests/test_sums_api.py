@@ -12,6 +12,7 @@ from bettertrees.sums import (
     AdditiveTreeBooster,
     BaggedFIGSClassifier,
     BoostedOptimalTrees,
+    BudgetClassifier,
     CompactTreeBooster,
     FIGSClassifier,
     LightGBMRefitClassifier,
@@ -26,7 +27,8 @@ ESTIMATORS = [SumOfOptimalTrees(), FIGSClassifier(), AdditiveTreeBooster(max_rou
               BaggedFIGSClassifier(max_splits=8, n_bags=4, distill=True),
               RashomonFIGSClassifier(max_splits=8, n_mutations=5),
               CompactTreeBooster(max_splits=12),
-              LightGBMRefitClassifier(max_splits=12, min_child_samples=1)]
+              LightGBMRefitClassifier(max_splits=12, min_child_samples=1),
+              BudgetClassifier(max_splits=4), BudgetClassifier(max_splits=96)]
 
 
 def _expected_failures(est):
@@ -34,7 +36,8 @@ def _expected_failures(est):
         # bootstrap replicates and the validation split both draw ROWS
         return {"check_sample_weight_equivalence_on_dense_data":
                 "row-based resampling is not invariant to repetition"}
-    if isinstance(est, AdditiveTreeBooster | BoostedOptimalTrees | CompactTreeBooster):
+    if isinstance(est, AdditiveTreeBooster | BoostedOptimalTrees | CompactTreeBooster) or (
+            isinstance(est, BudgetClassifier) and est.max_splits > 64):
         # early stopping draws 15% of the ROWS for validation: repeating a row
         # is not the same as weight 2 (the repeated row may land on both sides)
         return {"check_sample_weight_equivalence_on_dense_data":
@@ -176,3 +179,29 @@ def test_dataframe_in_sklearn_tools_raises_no_feature_name_warning(make):
         m.predict_proba(X)
         m.predict(X)
         m.decision_function(X)
+
+
+@pytest.mark.parametrize(("budget", "kind", "settings"), [
+    (4, FIGSClassifier, dict(max_delta_step=4.0, learning_rate=1.0)),
+    (8, FIGSClassifier, dict(max_delta_step=4.0)),
+    (16, FIGSClassifier, dict(learning_rate=0.3, max_delta_step=None)),
+    (64, FIGSClassifier, dict(learning_rate=0.3)),
+    (65, CompactTreeBooster, dict()),
+])
+def test_budget_classifier_applies_the_benchmark_rule_and_delegates(budget, kind, settings):
+    X, y = _data()
+    m = BudgetClassifier(max_splits=budget).fit(X, y)
+    assert type(m.model_) is kind and m.model_.max_splits == budget
+    for name, value in settings.items():
+        assert getattr(m.model_, name) == value
+    np.testing.assert_array_equal(m.predict_proba(X), m.model_.predict_proba(X))
+    assert list(m.feature_names_in_) == list(X.columns)
+    assert m.explain() == m.model_.explain() and m.rules() == m.model_.rules()
+    # an edit through the wrapper changes what the wrapper predicts
+    before = m.predict_proba(X)
+    m.set_leaf_value(0, m.trees_[0].leaves[0], 5.0)
+    assert not np.allclose(before, m.predict_proba(X))
+    with pytest.raises(ValueError):
+        BudgetClassifier(max_splits=0).fit(X, y)
+    with pytest.raises(AttributeError):
+        BudgetClassifier().explain  # not fitted: nothing to delegate to

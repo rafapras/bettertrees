@@ -35,19 +35,6 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
     ----------
     splitter : {'hist', 'exact'}, default='hist'
         Split engine; training is never delegated to scikit-learn.
-    objective : {'gini', 'precision'}, default='gini'
-        Objective that scores the cuts; the interface is modular for future
-        objectives. ``precision`` is **experimental**: each cut is scored by the
-        best precision among children with minimum support, minus the parent's
-        precision, without the Gini bound. It does not maximize true positives
-        or coverage and tends toward extreme cuts that isolate the purest child.
-        ``feature_importances_`` is still measured in Gini.
-    positive_class : scalar, default=None
-        Explicit positive class when ``objective='precision'``.
-    min_precision : float in [0, 1], default=0.9
-        Minimum precision of an eligible leaf for the precision objective.
-    min_support : float > 0, default=1.0
-        Minimum weighted mass of an eligible leaf for the precision objective.
     max_feature_repeats : int >= 1 or None, default=None
         Maximum number of times one feature may appear on each root-to-leaf
         path. ``None`` grows without this limit; the counter is shared along the
@@ -108,18 +95,25 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
 
     Notes
     -----
+    Cuts are scored by weighted Gini. An experimental precision objective lives in
+    ``bettertrees.experimental.PrecisionTreeClassifier``.
     get_params/set_params come from BaseEstimator and ``clone`` works. There is
     no internal validation or automatic pruning selection here; smoothing and
     post-pruning are opt-in.
     """
 
+    # the cut objective and its options; only PrecisionTreeClassifier exposes them
+    objective = "gini"
+    positive_class = None
+    min_precision = 0.9
+    min_support = 1.0
+
     def __init__(self, *, splitter="hist", max_depth=None, min_samples_leaf=1,
                  max_leaf_nodes=None, random_state=None, min_impurity_decrease=0.0,
                  max_bins=255, search_stopping="bound", gain_tolerance=0.0,
-                 objective="gini", positive_class=None, min_precision=0.9,
-                  min_support=1.0, max_feature_repeats=None, n_jobs=1,
-                  reuse_parent_histograms=False, monotonic_cst=None,
-                  leaf_smoothing=0.0, ccp_alpha=0.0, leaf_shrinkage=0.0):
+                 max_feature_repeats=None, n_jobs=1,
+                 reuse_parent_histograms=False, monotonic_cst=None,
+                 leaf_smoothing=0.0, ccp_alpha=0.0, leaf_shrinkage=0.0):
         """Store the parameters without any training work (clone/set_params)."""
         self.splitter = splitter
         self.max_depth = max_depth
@@ -130,10 +124,6 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         self.max_bins = max_bins
         self.search_stopping = search_stopping
         self.gain_tolerance = gain_tolerance
-        self.objective = objective
-        self.positive_class = positive_class
-        self.min_precision = min_precision
-        self.min_support = min_support
         self.max_feature_repeats = max_feature_repeats
         self.n_jobs = n_jobs
         self.reuse_parent_histograms = reuse_parent_histograms

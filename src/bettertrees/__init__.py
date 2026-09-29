@@ -1,5 +1,7 @@
 """Fast decision trees and interpretable sums of trees for binary classification.
 
+- ``BudgetClassifier(max_splits=b)``: the recommended start, no tuning: the sum of
+  trees our benchmark validated for a budget of b cuts.
 - ``FastDecisionTreeClassifier`` / ``FastDecisionTreeClassifierCV``: a single tree
   (exact and histogram engines), with leaf count and shrinkage chosen by CV.
 - ``SumOfOptimalTrees``: a logit sum of a few Newton-optimal trees (depth 1-3).
@@ -20,10 +22,13 @@ editing API; the single tree is multiclass and has ``export_text()``.
 
 from .autotune import FastDecisionTreeClassifierCV
 from .estimator import FastDecisionTreeClassifier
-from .multilevel import fit_multilevel_tree
+
+# kept importable from the top for existing code; it lives in bettertrees.experimental
+from .multilevel import fit_multilevel_tree  # noqa: F401
 from .sums import (
     AdditiveTreeBooster,
     BaggedFIGSClassifier,
+    BudgetClassifier,
     CompactTreeBooster,
     FIGSClassifier,
     LightGBMRefitClassifier,
@@ -34,7 +39,7 @@ from .sums import (
 
 __version__ = "0.1.0.dev0"
 
-__all__ = ["AdditiveTreeBooster", "BaggedFIGSClassifier", "CompactTreeBooster", "FIGSClassifier",
-           "FastDecisionTreeClassifier", "FastDecisionTreeClassifierCV", "LightGBMRefitClassifier",
-           "RashomonFIGSClassifier",
-           "SumOfOptimalTrees", "__version__", "fit_multilevel_tree", "from_lightgbm"]
+__all__ = ["AdditiveTreeBooster", "BaggedFIGSClassifier", "BudgetClassifier",
+           "CompactTreeBooster", "FIGSClassifier", "FastDecisionTreeClassifier",
+           "FastDecisionTreeClassifierCV", "LightGBMRefitClassifier", "RashomonFIGSClassifier",
+           "SumOfOptimalTrees", "__version__", "from_lightgbm"]

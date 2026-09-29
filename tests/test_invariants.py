@@ -9,7 +9,7 @@ import itertools
 
 import numpy as np
 import pytest
-from tree_invariants import check_tree_invariants
+from tree_invariants import check_tree_invariants, make_tree
 
 from bettertrees import FastDecisionTreeClassifier
 
@@ -71,7 +71,7 @@ def _matrix():
 @pytest.mark.parametrize("kind, params", _matrix())
 def test_every_flag_combination_respects_invariants(kind, params):
     X, y, weights = _dataset(kind)
-    model = FastDecisionTreeClassifier(**params).fit(X, y, sample_weight=weights)
+    model = make_tree(**params).fit(X, y, sample_weight=weights)
     check_tree_invariants(model, X, y, weights)
 
 
@@ -127,8 +127,8 @@ def test_bound_equals_exhaustive_search(seed, growth):
 def test_parallel_equals_serial(seed, extra):
     X, y, w = _dataset("binary", seed)
     params = dict(max_depth=7, min_samples_leaf=3, random_state=seed, **extra)
-    serial = FastDecisionTreeClassifier(n_jobs=1, **params).fit(X, y, w)
-    parallel = FastDecisionTreeClassifier(n_jobs=3, **params).fit(X, y, w)
+    serial = make_tree(n_jobs=1, **params).fit(X, y, w)
+    parallel = make_tree(n_jobs=3, **params).fit(X, y, w)
     _assert_same_tree(serial, parallel, X)
 
 
@@ -138,8 +138,8 @@ def test_non_binding_repeat_limit_equals_no_limit(splitter, extra):
     X, y, w = _dataset("binary", 3)
     params = dict(splitter=splitter, max_depth=6, min_samples_leaf=3,
                   random_state=1, **extra)
-    free = FastDecisionTreeClassifier(**params).fit(X, y, w)
-    loose = FastDecisionTreeClassifier(max_feature_repeats=50, **params).fit(X, y, w)
+    free = make_tree(**params).fit(X, y, w)
+    loose = make_tree(max_feature_repeats=50, **params).fit(X, y, w)
     _assert_same_tree(free, loose, X)
 
 

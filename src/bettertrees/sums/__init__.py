@@ -5,20 +5,26 @@
 - ``AdditiveTreeBooster``: a long sum of optimal depth-1/2 trees with early stopping.
 - ``BaggedFIGSClassifier`` / ``RashomonFIGSClassifier``: FIGS whose structure is chosen
   by a bootstrap vote (optionally distilled from the bag) or by a Rashomon search.
-- ``BoostedOptimalTrees``: plain boosting of optimal trees (no backfitting).
+- ``BudgetClassifier``: the no-tuning choice for a cut budget (FIGS or compact booster).
 """
 
 from .additive import AdditiveTreeBooster
+from .budget import BudgetClassifier
 from .compact import CompactTreeBooster
 from .imported import LightGBMRefitClassifier, TreeSum, from_lightgbm
 from .robust import BaggedFIGSClassifier, RashomonFIGSClassifier
 from .screen import screen_features
-from .smalltrees import BoostedOptimalTrees, FIGSClassifier, SmallTree, SumOfOptimalTrees
+from .smalltrees import (
+    BoostedOptimalTrees,  # noqa: F401 - internal, importable for the benchmark
+    FIGSClassifier,
+    SmallTree,
+    SumOfOptimalTrees,
+)
 
 __all__ = [
     "AdditiveTreeBooster",
     "BaggedFIGSClassifier",
-    "BoostedOptimalTrees",
+    "BudgetClassifier",
     "CompactTreeBooster",
     "FIGSClassifier",
     "LightGBMRefitClassifier",

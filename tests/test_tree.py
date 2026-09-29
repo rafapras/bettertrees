@@ -31,8 +31,10 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.utils import estimator_checks
+from tree_invariants import make_tree
 
 from bettertrees import FastDecisionTreeClassifier, builder, search
+from bettertrees.experimental import PrecisionTreeClassifier
 from bettertrees.splitters import resolve_objective, resolve_splitter_spec
 
 
@@ -185,12 +187,12 @@ def test_exact_numba_full_tree_matches_python_reference(monkeypatch, n_classes):
     weights = rng.uniform(0.25, 2.0, size=len(X))
     params = dict(splitter="exact", search_stopping="off", max_depth=4,
                   max_leaf_nodes=12, min_samples_leaf=5, random_state=7)
-    candidate = FastDecisionTreeClassifier(**params).fit(
+    candidate = make_tree(**params).fit(
         X, y, sample_weight=weights)
     with monkeypatch.context() as context:
         context.setattr(search, "find_best_split_exact",
                         core._find_best_split_exact_reference)
-        baseline = FastDecisionTreeClassifier(**params).fit(
+        baseline = make_tree(**params).fit(
             X, y, sample_weight=weights)
     for candidate_array, baseline_array in zip(candidate.nodes_, baseline.nodes_):
         np.testing.assert_allclose(candidate_array, baseline_array,
@@ -240,12 +242,12 @@ def test_exact_precision_numba_full_tree_matches_reference(monkeypatch):
                   min_precision=0.95, min_support=4.0,
                   search_stopping="off", max_depth=4, max_leaf_nodes=12,
                   min_samples_leaf=5, random_state=7)
-    candidate = FastDecisionTreeClassifier(**params).fit(
+    candidate = make_tree(**params).fit(
         X, y, sample_weight=weights)
     with monkeypatch.context() as context:
         context.setattr(search, "find_best_split_exact_precision",
                         core._find_best_split_exact_precision_reference)
-        baseline = FastDecisionTreeClassifier(**params).fit(
+        baseline = make_tree(**params).fit(
             X, y, sample_weight=weights)
     for candidate_array, baseline_array in zip(candidate.nodes_, baseline.nodes_):
         np.testing.assert_allclose(candidate_array, baseline_array,
@@ -304,7 +306,7 @@ def test_leaf_smoothing_preserves_tree_and_uses_weighted_root_prior(splitter):
     weights = np.array([2.0, 1.0, 1.0, 1.0])
     params = dict(splitter=splitter, max_depth=1, min_samples_leaf=1,
                   random_state=0)
-    raw = FastDecisionTreeClassifier(**params).fit(X, y, sample_weight=weights)
+    raw = make_tree(**params).fit(X, y, sample_weight=weights)
     smooth = FastDecisionTreeClassifier(**params, leaf_smoothing=2.0).fit(
         X, y, sample_weight=weights)
     np.testing.assert_array_equal(raw.apply(X), smooth.apply(X))
@@ -388,7 +390,7 @@ def test_ccp_alpha_preserves_missing_route_weights_and_default(splitter):
     weights = np.array([2, 1, 1, 1, 1, 1], dtype=np.float64)
     params = dict(splitter=splitter, max_depth=2, min_samples_leaf=1,
                   search_stopping="off", random_state=0)
-    control = FastDecisionTreeClassifier(**params).fit(X, y, sample_weight=weights)
+    control = make_tree(**params).fit(X, y, sample_weight=weights)
     same = FastDecisionTreeClassifier(**params, ccp_alpha=0.0).fit(
         X, y, sample_weight=weights)
     np.testing.assert_array_equal(control.predict_proba(X), same.predict_proba(X))
@@ -409,9 +411,8 @@ def test_ccp_alpha_rejects_invalid_values(bad):
 
 def test_ccp_alpha_positive_requires_gini_objective():
     with pytest.raises(ValueError, match="ccp_alpha"):
-        FastDecisionTreeClassifier(
-            objective="precision", positive_class=1,
-            search_stopping="off", ccp_alpha=0.1).fit([[0], [1]], [0, 1])
+        PrecisionTreeClassifier(
+            positive_class=1, search_stopping="off", ccp_alpha=0.1).fit([[0], [1]], [0, 1])
 
 
 def test_ccp_alpha_projects_monotonicity_after_pruning():
@@ -603,7 +604,7 @@ def test_hist_hot_path_batches_candidates_without_python_per_cut(monkeypatch):
                   max_depth=1, min_samples_leaf=5, max_bins=64,
                   random_state=9, n_jobs=1)
     # Warm the relevant specializations before observing Python entry points.
-    FastDecisionTreeClassifier(**params).fit(X, y)
+    make_tree(**params).fit(X, y)
     batch_kernel = core._scan_histograms_row_major_numba
     gini_kernel = core.gini
     calls = {"batch": 0, "gini": 0}
@@ -623,7 +624,7 @@ def test_hist_hot_path_batches_candidates_without_python_per_cut(monkeypatch):
     monkeypatch.setattr(search, "scan_histogram_feature", unexpected_scalar_scan)
     monkeypatch.setattr(search, "_scan_histogram_feature_numba", unexpected_scalar_scan)
     monkeypatch.setattr(search, "gini", observed_gini)
-    model = FastDecisionTreeClassifier(**params).fit(X, y)
+    model = make_tree(**params).fit(X, y)
 
     assert model.fit_stats_["hist_candidates_evaluated"] > 100
     assert model.fit_stats_["nodes_split"] == 1
@@ -646,7 +647,7 @@ def test_exact_hot_path_calls_numba_without_python_per_candidate(monkeypatch, ob
     else:
         # Gini: a single kernel per node gathers, sorts and scans every feature.
         kernel_name = "_find_best_split_exact_gini_numba"
-    FastDecisionTreeClassifier(**params).fit(X, y)
+    make_tree(**params).fit(X, y)
     kernel = getattr(core, kernel_name)
     calls = []
 
@@ -655,7 +656,7 @@ def test_exact_hot_path_calls_numba_without_python_per_candidate(monkeypatch, ob
         return kernel(*args)
 
     monkeypatch.setattr(search, kernel_name, observed_kernel)
-    model = FastDecisionTreeClassifier(**params).fit(X, y)
+    model = make_tree(**params).fit(X, y)
     assert model.fit_stats_["exact_candidates_evaluated"] > 100
     assert model.fit_stats_["nodes_split"] == 1
     if objective == "gini":
@@ -700,7 +701,7 @@ def test_parent_hist_reuse_matches_depth_first_tree_and_probabilities():
     params = dict(max_depth=6, max_leaf_nodes=None, min_samples_leaf=20,
                   max_bins=64, random_state=11, search_stopping="bound",
                   n_jobs=2)
-    baseline = FastDecisionTreeClassifier(**params).fit(X, y)
+    baseline = make_tree(**params).fit(X, y)
     reused = FastDecisionTreeClassifier(
         reuse_parent_histograms=True, **params).fit(X, y)
     assert all(np.array_equal(a, b, equal_nan=True)
@@ -724,7 +725,7 @@ def test_parent_hist_reuse_handles_equal_size_children():
     X = X.astype(np.float32)
     y = (signal > 0.3).astype(int)
     params = dict(max_depth=6, min_samples_leaf=5, random_state=0)
-    baseline = FastDecisionTreeClassifier(**params).fit(X, y)
+    baseline = make_tree(**params).fit(X, y)
     reused = FastDecisionTreeClassifier(
         reuse_parent_histograms=True, **params).fit(X, y)
     nodes = baseline.nodes_
@@ -805,8 +806,8 @@ def test_feature_importances_match_weighted_gini_and_zero_for_leaf_tree():
 def test_precision_objective_selects_eligible_positive_leaf(splitter):
     X = np.arange(6, dtype=np.float64).reshape(-1, 1)
     y = np.array([0, 0, 0, 1, 1, 1])
-    model = FastDecisionTreeClassifier(
-        splitter=splitter, objective="precision", positive_class=1,
+    model = PrecisionTreeClassifier(
+        splitter=splitter, positive_class=1,
         min_precision=0.9, min_support=3, max_depth=1,
         max_bins=8, search_stopping="off", random_state=0,
     ).fit(X, y)
@@ -823,8 +824,8 @@ def test_precision_objective_selects_eligible_positive_leaf(splitter):
 def test_precision_objective_returns_leaf_when_no_child_reaches_support():
     X = np.arange(6, dtype=np.float64).reshape(-1, 1)
     y = np.array([0, 0, 0, 1, 1, 1])
-    model = FastDecisionTreeClassifier(
-        splitter="exact", objective="precision", positive_class=1,
+    model = PrecisionTreeClassifier(
+        splitter="exact", positive_class=1,
         min_precision=0.9, min_support=6, max_depth=1,
         search_stopping="off",
     ).fit(X, y)
@@ -836,8 +837,8 @@ def test_precision_support_uses_weighted_mass():
     X = np.arange(4, dtype=np.float64).reshape(-1, 1)
     y = np.array([0, 0, 1, 1])
     weights = np.array([10.0, 1.0, 2.0, 2.0])
-    model = FastDecisionTreeClassifier(
-        splitter="exact", objective="precision", positive_class=1,
+    model = PrecisionTreeClassifier(
+        splitter="exact", positive_class=1,
         min_precision=0.9, min_support=3.5, max_depth=1,
         search_stopping="off",
     ).fit(X, y, sample_weight=weights)
@@ -849,13 +850,13 @@ def test_precision_support_uses_weighted_mass():
 def test_precision_reuses_min_impurity_decrease_as_minimum_objective_gain():
     X = np.arange(6, dtype=np.float64).reshape(-1, 1)
     y = np.array([0, 0, 0, 1, 1, 1])
-    accepted = FastDecisionTreeClassifier(
-        splitter="exact", objective="precision", positive_class=1,
+    accepted = PrecisionTreeClassifier(
+        splitter="exact", positive_class=1,
         min_precision=0.9, min_support=3, min_impurity_decrease=0.5,
         max_depth=1, search_stopping="off",
     ).fit(X, y)
-    rejected = FastDecisionTreeClassifier(
-        splitter="exact", objective="precision", positive_class=1,
+    rejected = PrecisionTreeClassifier(
+        splitter="exact", positive_class=1,
         min_precision=0.9, min_support=3, min_impurity_decrease=0.51,
         max_depth=1, search_stopping="off",
     ).fit(X, y)
@@ -867,8 +868,8 @@ def test_precision_reuses_min_impurity_decrease_as_minimum_objective_gain():
 def test_precision_rejects_zero_gain_on_xor(splitter):
     X = np.array([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=np.float32)
     y = np.array([0, 1, 1, 0], dtype=np.int32)
-    model = FastDecisionTreeClassifier(
-        splitter=splitter, objective="precision", positive_class=1,
+    model = PrecisionTreeClassifier(
+        splitter=splitter, positive_class=1,
         min_precision=0.9, min_support=2, min_impurity_decrease=0,
         search_stopping="off", random_state=0,
     ).fit(X, y)
@@ -879,12 +880,12 @@ def test_precision_objective_requires_explicit_class_and_off_search():
     X = [[0.0], [1.0], [2.0], [3.0]]
     y = [0, 0, 1, 1]
     with pytest.raises(ValueError, match="positive_class"):
-        FastDecisionTreeClassifier(
-            objective="precision", search_stopping="off",
+        PrecisionTreeClassifier(
+            search_stopping="off",
         ).fit(X, y)
     with pytest.raises(ValueError, match="admissible bound"):
-        FastDecisionTreeClassifier(
-            objective="precision", positive_class=1,
+        PrecisionTreeClassifier(
+            positive_class=1, search_stopping="bound",
         ).fit(X, y)
 
 
@@ -976,7 +977,7 @@ def test_max_feature_repeats_is_per_path_and_two_represents_interval(splitter):
     params = dict(splitter=splitter, max_depth=3, min_samples_leaf=1,
                   max_bins=16, search_stopping="off", random_state=0)
 
-    unrestricted = FastDecisionTreeClassifier(**params).fit(X, y)
+    unrestricted = make_tree(**params).fit(X, y)
     once = FastDecisionTreeClassifier(**params, max_feature_repeats=1).fit(X, y)
     twice = FastDecisionTreeClassifier(**params, max_feature_repeats=2).fit(X, y)
 
@@ -1070,7 +1071,7 @@ def test_monotonic_cst_contract_rejects_multiclass_and_bad_directions():
     dict(max_feature_repeats=0), dict(max_feature_repeats=1.5)])
 def test_invalid_parameters(params):
     with pytest.raises(ValueError):
-        FastDecisionTreeClassifier(**params).fit([[0], [1]], [0, 1])
+        make_tree(**params).fit([[0], [1]], [0, 1])
 
 
 def test_n_jobs_above_available_cores_is_clamped():

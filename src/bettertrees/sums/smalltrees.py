@@ -467,6 +467,9 @@ def grow_figs(est, Xb, nb, target, w, max_splits, max_trees=None):
 class BoostedOptimalTrees(_AdditiveTrees):
     """Boosting of optimal Newton trees of depth 1-3, with early stopping.
 
+    Internal: a benchmark arm, not part of the public API (use
+    ``AdditiveTreeBooster`` for depth 1-2).
+
     Extends ``AdditiveTreeBooster`` (depth 1/2) to depth 3: every round fits the
     optimal tree of depth ``depth`` on the residual (at depth 3, restricted to
     the ``max_features_d3`` most important features), with leaves set by a
