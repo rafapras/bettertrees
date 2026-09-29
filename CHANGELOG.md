@@ -2,6 +2,9 @@
 
 ## Unreleased — 0.1.0.dev0
 
+- Add high-level public API type hints, the `py.typed` marker and a downstream
+  typing check in CI, without pandas-specific stubs or new runtime dependencies.
+
 - Preserve predictions when merging duplicate trees with different node orders.
 - Preserve float64 input comparisons in imported LightGBM models. Reject imports
   with more than 254 thresholds per feature or `zero_as_missing` splits instead

@@ -18,9 +18,15 @@ Cut convention (bins): ``x <= v`` includes NaN (NaN always goes left);
 The "or missing" note appears only for features that had NaN in training.
 """
 
+from __future__ import annotations
+
+from collections.abc import Sequence
+from typing import Any
+
 import numpy as np
 from sklearn.utils.validation import check_is_fitted
 
+from .._typing import ArrayLike, FeatureNames, FloatArray, LabelArray
 from ._common import bin_threshold, predict_input, rebin
 
 
@@ -113,7 +119,7 @@ class InterpretableSumMixin:
 
     # ------------------------------------------------------------ prediction
 
-    def predict_proba(self, X):
+    def predict_proba(self, X: ArrayLike) -> FloatArray:
         """Probabilities of both classes.
 
         Returns
@@ -124,19 +130,19 @@ class InterpretableSumMixin:
         p = 0.5 * (1.0 + np.tanh(0.5 * self.decision_function(X)))
         return np.column_stack([1 - p, p])
 
-    def predict(self, X):
+    def predict(self, X: ArrayLike) -> LabelArray:
         """Most likely class (``classes_[1]`` when the logit is positive)."""
         margin = self.decision_function(X)  # checks the fit before reading classes_
         return self.classes_[(margin > 0).astype(int)]
 
     @property
-    def n_splits_(self):
+    def n_splits_(self) -> int:
         """Total number of cuts (internal nodes) over all trees."""
         return sum(t.n_splits for t in self._explain_trees())
 
     # ------------------------------------------------------------ trees
 
-    def get_trees(self, feature_names=None):
+    def get_trees(self, feature_names: FeatureNames | None = None) -> list[dict[str, Any]]:
         """The trees of the sum as arrays, in the format of sklearn's ``tree_``.
 
         Each tree is a dict of per-node arrays: ``feature`` (-1 at leaves),
@@ -165,7 +171,7 @@ class InterpretableSumMixin:
                 value=np.asarray(tree.value, dtype=np.float64).copy()))
         return out
 
-    def to_shap_model(self):
+    def to_shap_model(self) -> dict[str, Any]:
         """The sum in SHAP's custom tree format, for exact TreeSHAP.
 
         ``shap.TreeExplainer(model.to_shap_model(), data=background,
@@ -188,7 +194,7 @@ class InterpretableSumMixin:
         return dict(trees=trees, base_offset=float(self.base_margin_),
                     input_dtype=np.dtype(getattr(self, "input_dtype_", np.float32)).type)
 
-    def export_text(self, feature_names=None, precision=4):
+    def export_text(self, feature_names: FeatureNames | None = None, precision: int = 4) -> str:
         """The trees drawn as text (in the style of ``sklearn.tree.export_text``)."""
         lines = [f"base (logit): {float(self.base_margin_):+.{precision}f}"]
         for k, t in enumerate(self.get_trees(feature_names), 1):
@@ -219,14 +225,15 @@ class InterpretableSumMixin:
         names = getattr(self, "feature_names_in_", None)
         return None if names is None else list(names)
 
-    def rules(self, feature_names=None, precision=6):
+    def rules(self, feature_names: FeatureNames | None = None,
+               precision: int = 6) -> list[tuple[int, list[str], float]]:
         """[(tree, conditions, logit value)] for every leaf."""
         check_is_fitted(self, "base_margin_")
         names, nan = self._names(feature_names), getattr(self, "nan_features_", None)
         return [(k, conds, v) for k, tree in enumerate(self._explain_trees())
                 for conds, v in leaf_rules(tree, self.bin_edges_, names, nan, precision)]
 
-    def predict_contributions(self, X):
+    def predict_contributions(self, X: ArrayLike) -> FloatArray:
         """(n_samples, n_trees) matrix of logit contributions; base + row sum
         = ``decision_function(X)``."""
         Xb = rebin(predict_input(self, X, "base_margin_"), self.bin_edges_,
@@ -237,7 +244,8 @@ class InterpretableSumMixin:
             out[:, k] = tree.value[tree.leaf_ids(Xb)]
         return out
 
-    def to_dict(self, feature_names=None, precision=6):
+    def to_dict(self, feature_names: FeatureNames | None = None,
+                 precision: int = 6) -> dict[str, Any]:
         """JSON-ready model (schema 1), with exact bins and tree arrays.
 
         ``rules`` are rounded for display only. Execute ``threshold_bin`` against
@@ -264,7 +272,7 @@ class InterpretableSumMixin:
                     classes=[c.item() if hasattr(c, "item") else c for c in self.classes_],
                     trees=trees)
 
-    def explain(self, feature_names=None, precision=4):
+    def explain(self, feature_names: FeatureNames | None = None, precision: int = 4) -> str:
         """Text scorecard: add the base and the leaf value of every tree."""
         d = self.to_dict(feature_names, precision)
         n_cuts = sum(t.n_splits for t in self._explain_trees())
@@ -279,7 +287,7 @@ class InterpretableSumMixin:
 
     # ------------------------------------------------------------ plots
 
-    def shape_functions(self):
+    def shape_functions(self) -> dict[int, tuple[FloatArray, int]]:
         """Main effects: {feature: (values per bin, number of trees)}.
 
         Sums, per feature, the trees that use only that feature (the shape
@@ -301,12 +309,14 @@ class InterpretableSumMixin:
             out[f] = (vals + tree.value[tree.leaf_ids(Xb)], count + 1)
         return out
 
-    def interaction_trees(self):
+    def interaction_trees(self) -> list[int]:
         """Indices of the trees that use more than one feature."""
         return [k for k, t in enumerate(self._explain_trees())
                 if len({int(f) for f, lft in zip(t.feature, t.left) if lft != -1}) > 1]
 
-    def plot_shapes(self, feature_names=None, features=None, ncols=3, figsize=None):
+    def plot_shapes(self, feature_names: FeatureNames | None = None,
+                     features: Sequence[int] | None = None, ncols: int = 3,
+                     figsize: tuple[float, float] | None = None) -> Any:
         """Shape functions (main effects on the logit scale), one panel per feature."""
         plt = _pyplot()
         shapes = self.shape_functions()
@@ -337,7 +347,8 @@ class InterpretableSumMixin:
         fig.tight_layout()
         return fig
 
-    def plot_contributions(self, x, feature_names=None, max_terms=12, ax=None):
+    def plot_contributions(self, x: ArrayLike, feature_names: FeatureNames | None = None,
+                            max_terms: int = 12, ax: Any = None) -> Any:
         """Waterfall of one prediction: the base plus the leaf ``x`` falls in, per tree."""
         plt = _pyplot()
         if hasattr(x, "to_frame"):  # a pandas row (Series): keep the column names

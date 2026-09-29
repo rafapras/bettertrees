@@ -19,8 +19,13 @@ The bag and the search are used to choose the structure, not to predict: the
 fitted model is a plain sum of trees with the same interpretation API.
 """
 
+from __future__ import annotations
+
+from typing import Literal
+
 import numpy as np
 
+from .._typing import ArrayLike, Seed, SelfT
 from ._common import base_margin, grad_hess, sigmoid
 from ._kernels import best_cut_1d, hist_1d
 from .smalltrees import FIGSClassifier, SmallTree, grow_figs
@@ -113,10 +118,11 @@ class BaggedFIGSClassifier(FIGSClassifier):
         The cuts the final model could use.
     """
 
-    def __init__(self, *, max_splits=32, max_trees=None, lam="auto", min_weight=20.0,
-                 max_bins=32, backfit_sweeps=1, learning_rate=1.0, n_bags=20,
-                 vocab_size=None, min_votes=0.0, distill=False, distill_mix=0.5,
-                 random_state=0):
+    def __init__(self, *, max_splits: int = 32, max_trees: int | None = None,
+                 lam: float | Literal["auto"] = "auto", min_weight: float = 20.0,
+                 max_bins: int = 32, backfit_sweeps: int = 1, learning_rate: float = 1.0,
+                 n_bags: int = 20, vocab_size: int | None = None, min_votes: float = 0.0,
+                 distill: bool = False, distill_mix: float = 0.5, random_state: Seed = 0) -> None:
         super().__init__(max_splits=max_splits, max_trees=max_trees, lam=lam,
                          min_weight=min_weight, max_bins=max_bins,
                          backfit_sweeps=backfit_sweeps, learning_rate=learning_rate)
@@ -127,7 +133,8 @@ class BaggedFIGSClassifier(FIGSClassifier):
         self.distill_mix = distill_mix
         self.random_state = random_state
 
-    def fit(self, X, y, sample_weight=None, y_soft=None):
+    def fit(self: SelfT, X: ArrayLike, y: ArrayLike, sample_weight: ArrayLike | None = None,
+            y_soft: ArrayLike | None = None) -> SelfT:
         """Fit the replicates, vote, and fit the final sum (see the class docstring)."""
         self.lam_ = 2.0 * self.max_splits if self.lam == "auto" else float(self.lam)
         self.learning_rate_ = float(self.learning_rate)
@@ -213,10 +220,13 @@ class RashomonFIGSClassifier(FIGSClassifier):
         Validation loss of the current structure after each mutation.
     """
 
-    def __init__(self, *, max_splits=32, max_trees=None, lam="auto", min_weight=20.0,
-                 max_bins=32, backfit_sweeps=1, learning_rate=1.0, n_mutations=150,
-                 validation_fraction=0.2, epsilon=0.01, max_shift=3, n_alternatives=4,
-                 select="best", refit_sweeps=3, random_state=0):
+    def __init__(self, *, max_splits: int = 32, max_trees: int | None = None,
+                 lam: float | Literal["auto"] = "auto", min_weight: float = 20.0,
+                 max_bins: int = 32, backfit_sweeps: int = 1, learning_rate: float = 1.0,
+                 n_mutations: int = 150, validation_fraction: float = 0.2, epsilon: float = 0.01,
+                 max_shift: int = 3, n_alternatives: int = 4,
+                 select: Literal["best", "stable"] = "best", refit_sweeps: int = 3,
+                 random_state: Seed = 0) -> None:
         super().__init__(max_splits=max_splits, max_trees=max_trees, lam=lam,
                          min_weight=min_weight, max_bins=max_bins,
                          backfit_sweeps=backfit_sweeps, learning_rate=learning_rate)
@@ -294,7 +304,8 @@ class RashomonFIGSClassifier(FIGSClassifier):
 
     # ---------------------------------------------------------------- fit
 
-    def fit(self, X, y, sample_weight=None, y_soft=None):
+    def fit(self: SelfT, X: ArrayLike, y: ArrayLike, sample_weight: ArrayLike | None = None,
+            y_soft: ArrayLike | None = None) -> SelfT:
         """Fit the initial FIGS, search the structures and refit the selected one."""
         if self.select not in ("best", "stable"):
             raise ValueError("select must be 'best' or 'stable'.")
@@ -357,7 +368,8 @@ class RashomonFIGSClassifier(FIGSClassifier):
 
     # ---------------------------------------------------------------- Rashomon set
 
-    def rashomon_models(self, X=None, y=None, sample_weight=None):
+    def rashomon_models(self: SelfT, X: ArrayLike | None = None, y: ArrayLike | None = None,
+                        sample_weight: ArrayLike | None = None) -> list[SelfT]:
         """The Rashomon set as fitted estimators (best validation loss first).
 
         Each is a copy of this estimator holding one near-optimal structure
@@ -381,7 +393,7 @@ class RashomonFIGSClassifier(FIGSClassifier):
             out.append(m)
         return out
 
-    def rashomon_importance(self, X):
+    def rashomon_importance(self, X: ArrayLike) -> dict[str, tuple[float, float, float]]:
         """Range of each feature's importance over the Rashomon set.
 
         Importance of a feature in one model = mean |contribution| of the trees

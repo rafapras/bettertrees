@@ -1,7 +1,10 @@
 """Univariate screening: Newton gain of the best single cut and its stability."""
 
+from __future__ import annotations
+
 import numpy as np
 
+from .._typing import ArrayLike, FloatArray, Seed
 from ._common import (
     as_float_matrix,
     as_target,
@@ -14,9 +17,10 @@ from ._common import (
 from ._kernels import best_cut_1d, hist_1d
 
 
-def screen_features(X, y, margin=None, sample_weight=None, *, n_boot=30,
-                    max_bins=32, lam=1.0, min_weight=20.0, top_k=5,
-                    random_state=0):
+def screen_features(X: ArrayLike, y: ArrayLike, margin: ArrayLike | None = None,
+                    sample_weight: ArrayLike | None = None, *, n_boot: int = 30,
+                    max_bins: int = 32, lam: float = 1.0, min_weight: float = 20.0,
+                    top_k: int = 5, random_state: Seed = 0) -> dict[str, FloatArray]:
     """Score each feature by its best single cut on the residual of ``margin``.
 
     ``margin`` is the margin (logit) of a base model; ``None`` uses the

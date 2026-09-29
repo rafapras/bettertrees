@@ -16,8 +16,9 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: python -m pip install -e ".[test,examples]" ruff build
+      - run: python -m pip install -e ".[test,examples,typing]" ruff build
       - run: ruff check src tests tools examples/credit_data.py
+      - run: python -m mypy
       - run: python -m pytest -q
       # the notebooks are re-executed: a broken example fails the build
       - run: python tools/build_examples.py

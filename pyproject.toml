@@ -24,9 +24,13 @@ test = ["pytest>=8", "scipy", "pandas", "matplotlib", "shap", "lightgbm>=4.0"]
 # executing the example notebooks (tools/build_examples.py)
 examples = ["pandas", "matplotlib", "nbformat", "nbclient", "ipykernel"]
 plot = ["matplotlib>=3.8"]
+typing = ["mypy>=1.15"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+bettertrees = ["py.typed", "sums/*.pyi"]
 
 [tool.setuptools.dynamic]
 version = { attr = "bettertrees.__version__" }
@@ -34,6 +38,13 @@ version = { attr = "bettertrees.__version__" }
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["tests"]
+
+[tool.mypy]
+files = ["tools/typing_smoke.py"]
+mypy_path = "src"
+follow_imports = "silent"
+ignore_missing_imports = true
+strict = true
 
 [tool.ruff]
 line-length = 100

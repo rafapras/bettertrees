@@ -17,10 +17,15 @@ Interactions." KDD 2013 (GA2M), and Nori, Jenkins, Koch, Caruana.
 Chen, Guestrin. "XGBoost." KDD 2016: second-order gain and leaf values.
 """
 
+from __future__ import annotations
+
+from typing import Literal
+
 import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.utils.validation import check_is_fitted
 
+from .._typing import ArrayLike, FeatureNames, FloatArray, Seed, SelfT
 from ._common import (
     base_margin,
     bin_threshold,
@@ -96,9 +101,11 @@ class AdditiveTreeBooster(TreeEditMixin, InterpretableSumMixin, ClassifierMixin,
         Validation log-loss per round.
     """
 
-    def __init__(self, *, depth=2, learning_rate=0.3, max_rounds=300, lam=1.0,
-                 min_weight=20.0, max_bins=32, validation_fraction=0.15,
-                 patience=20, max_features_d2=128, feature_screen="lgbm", random_state=0):
+    def __init__(self, *, depth: Literal[1, 2] = 2, learning_rate: float = 0.3,
+                 max_rounds: int = 300, lam: float = 1.0, min_weight: float = 20.0,
+                 max_bins: int = 32, validation_fraction: float = 0.15, patience: int = 20,
+                 max_features_d2: int | None = 128,
+                 feature_screen: Literal["lgbm", "fast"] = "lgbm", random_state: Seed = 0) -> None:
         self.depth = depth
         self.learning_rate = learning_rate
         self.max_rounds = max_rounds
@@ -137,7 +144,8 @@ class AdditiveTreeBooster(TreeEditMixin, InterpretableSumMixin, ClassifierMixin,
             return None
         return (f1, *[int(v) for v in res[f1]])
 
-    def fit(self, X, y, sample_weight=None, y_soft=None):
+    def fit(self: SelfT, X: ArrayLike, y: ArrayLike, sample_weight: ArrayLike | None = None,
+            y_soft: ArrayLike | None = None) -> SelfT:
         """Fit the sum.
 
         Parameters
@@ -222,7 +230,7 @@ class AdditiveTreeBooster(TreeEditMixin, InterpretableSumMixin, ClassifierMixin,
             trees.append(tree)
         return trees
 
-    def decision_function(self, X):
+    def decision_function(self, X: ArrayLike) -> FloatArray:
         """Logit of ``P(y = classes_[1])``: base plus the sum of the terms."""
         Xb = rebin(predict_input(self, X, "trees_"), self.bin_edges_)
         m = np.full(len(Xb), self.base_margin_)
@@ -230,7 +238,7 @@ class AdditiveTreeBooster(TreeEditMixin, InterpretableSumMixin, ClassifierMixin,
             m += tree.value[tree.leaf_ids(Xb)]
         return m
 
-    def scorecard(self, feature_names=None):
+    def scorecard(self, feature_names: FeatureNames | None = None) -> list[tuple[int, str, float]]:
         """Readable terms: a list of (rule, logit value) per leaf of each term, as fitted.
 
         Reads ``terms_``, so it ignores later edits; ``rules()`` always reflects them.

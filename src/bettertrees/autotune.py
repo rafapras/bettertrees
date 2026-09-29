@@ -14,7 +14,11 @@ Friedman, Hastie, Tibshirani. "Additive logistic regression: a statistical view
 of boosting." Annals of Statistics, 2000 (best-first growth by gain).
 """
 
+from __future__ import annotations
+
+from collections.abc import Sequence
 from numbers import Integral, Real
+from typing import Literal
 
 import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin
@@ -22,6 +26,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.utils.validation import check_is_fitted
 
 from ._data import prepare_training_data
+from ._typing import ArrayLike, FeatureNames, FloatArray, IndexArray, LabelArray, Seed, SelfT
 from .estimator import FastDecisionTreeClassifier
 from .postprocess import expansion_steps, hierarchical_shrinkage_probabilities, prefix_leaf_ids
 
@@ -56,9 +61,17 @@ class FastDecisionTreeClassifierCV(ClassifierMixin, BaseEstimator):
         prefix needs node ids in expansion order).
     """
 
-    def __init__(self, *, leaves_grid=DEFAULT_LEAVES, shrinkage_grid=DEFAULT_SHRINKAGE,
-                 cv=3, min_samples_leaf=5, splitter="hist", max_bins=255,
-                 n_jobs=1, random_state=0):
+    classes_: LabelArray
+    n_features_in_: int
+    feature_names_in_: LabelArray
+    cv_scores_: FloatArray
+    best_params_: dict[str, int | float]
+    best_estimator_: FastDecisionTreeClassifier
+
+    def __init__(self, *, leaves_grid: Sequence[int] = DEFAULT_LEAVES,
+                 shrinkage_grid: Sequence[float] = DEFAULT_SHRINKAGE, cv: int = 3,
+                 min_samples_leaf: int = 5, splitter: Literal["hist", "exact"] = "hist",
+                 max_bins: int = 255, n_jobs: int = 1, random_state: Seed = 0) -> None:
         self.leaves_grid = leaves_grid
         self.shrinkage_grid = shrinkage_grid
         self.cv = cv
@@ -74,7 +87,8 @@ class FastDecisionTreeClassifierCV(ClassifierMixin, BaseEstimator):
             max_bins=self.max_bins, n_jobs=self.n_jobs,
             random_state=self.random_state, **extra)
 
-    def fit(self, X, y, sample_weight=None):
+    def fit(self: SelfT, X: ArrayLike, y: ArrayLike,
+            sample_weight: ArrayLike | None = None) -> SelfT:
         try:
             leaves = list(self.leaves_grid)
         except TypeError as exc:
@@ -141,19 +155,19 @@ class FastDecisionTreeClassifierCV(ClassifierMixin, BaseEstimator):
             self.__dict__.pop("feature_names_in_", None)
         return self
 
-    def predict_proba(self, X):
+    def predict_proba(self, X: ArrayLike) -> FloatArray:
         check_is_fitted(self, "best_estimator_")
         return self.best_estimator_.predict_proba(X)
 
-    def predict(self, X):
+    def predict(self, X: ArrayLike) -> LabelArray:
         check_is_fitted(self, "best_estimator_")
         return self.best_estimator_.predict(X)
 
-    def apply(self, X):
+    def apply(self, X: ArrayLike) -> IndexArray:
         check_is_fitted(self, "best_estimator_")
         return self.best_estimator_.apply(X)
 
-    def export_text(self, feature_names=None, precision=4):
+    def export_text(self, feature_names: FeatureNames | None = None, precision: int = 4) -> str:
         """The selected tree as text (see ``FastDecisionTreeClassifier.export_text``)."""
         check_is_fitted(self, "best_estimator_")
         return self.best_estimator_.export_text(feature_names, precision)

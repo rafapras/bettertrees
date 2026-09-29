@@ -13,11 +13,15 @@ cuts (internal nodes), summed over trees.
   margin of the other trees; stops at ``max_splits`` cuts.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
+from typing import Literal
 
 import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin
 
+from .._typing import ArrayLike, FloatArray, Seed, SelfT
 from ._common import (
     base_margin,
     binned,
@@ -202,7 +206,7 @@ class _AdditiveTrees(TreeEditMixin, InterpretableSumMixin, ClassifierMixin, Base
                                                         contribs[k], w)
         return margin
 
-    def decision_function(self, X):
+    def decision_function(self, X: ArrayLike) -> FloatArray:
         """Logit of ``P(y = classes_[1])``: base plus the sum of the trees."""
         Xb = rebin(predict_input(self, X, "trees_"), self.bin_edges_,
                    dtype=getattr(self, "input_dtype_", np.float32))
@@ -267,10 +271,13 @@ class SumOfOptimalTrees(_AdditiveTrees):
     ``plot_contributions``, ``plot_shapes``, ``to_shap_model``.
     """
 
-    def __init__(self, *, n_trees=2, depth=2, learning_rate="auto", lam=2.0,
-                 min_weight=20.0, max_bins=16, backfit_sweeps=2, max_features_d3=24,
-                 max_features_d2=128, feature_screen="lgbm", search="optimal",
-                 extra_stumps=0, max_delta_step=None):
+    def __init__(self, *, n_trees: int = 2, depth: Literal[1, 2, 3] = 2,
+                 learning_rate: float | Literal["auto"] = "auto", lam: float = 2.0,
+                 min_weight: float = 20.0, max_bins: int = 16, backfit_sweeps: int = 2,
+                 max_features_d3: int | None = 24, max_features_d2: int | None = 128,
+                 feature_screen: Literal["lgbm", "fast"] = "lgbm",
+                 search: Literal["optimal", "greedy"] = "optimal", extra_stumps: int = 0,
+                 max_delta_step: float | None = None) -> None:
         self.n_trees = n_trees
         self.depth = depth
         self.learning_rate = learning_rate
@@ -285,7 +292,8 @@ class SumOfOptimalTrees(_AdditiveTrees):
         self.extra_stumps = extra_stumps
         self.max_delta_step = max_delta_step
 
-    def fit(self, X, y, sample_weight=None, y_soft=None):
+    def fit(self: SelfT, X: ArrayLike, y: ArrayLike, sample_weight: ArrayLike | None = None,
+            y_soft: ArrayLike | None = None) -> SelfT:
         """Fit the sum.
 
         Parameters
@@ -386,8 +394,10 @@ class FIGSClassifier(_AdditiveTrees):
     ``plot_contributions``, ``plot_shapes``, ``to_shap_model``.
     """
 
-    def __init__(self, *, max_splits=16, max_trees=None, lam="auto", min_weight=20.0,
-                 max_bins=32, backfit_sweeps=1, learning_rate=1.0, max_delta_step=None):
+    def __init__(self, *, max_splits: int = 16, max_trees: int | None = None,
+                 lam: float | Literal["auto"] = "auto", min_weight: float = 20.0,
+                 max_bins: int = 32, backfit_sweeps: int = 1, learning_rate: float = 1.0,
+                 max_delta_step: float | None = None) -> None:
         self.max_splits = max_splits
         self.max_trees = max_trees
         self.lam = lam
@@ -397,7 +407,8 @@ class FIGSClassifier(_AdditiveTrees):
         self.learning_rate = learning_rate
         self.max_delta_step = max_delta_step
 
-    def fit(self, X, y, sample_weight=None, y_soft=None):
+    def fit(self: SelfT, X: ArrayLike, y: ArrayLike, sample_weight: ArrayLike | None = None,
+            y_soft: ArrayLike | None = None) -> SelfT:
         """Fit the sum.
 
         Parameters
@@ -493,10 +504,11 @@ class BoostedOptimalTrees(_AdditiveTrees):
     ``plot_contributions``, ``plot_shapes``, ``to_shap_model``.
     """
 
-    def __init__(self, *, depth=3, learning_rate=0.1, max_rounds=300, patience=30, lam=1.0,
-                 min_weight=20.0, max_bins=32, validation_fraction=0.15,
-                 max_features_d3=32, max_features_d2=128, feature_screen="lgbm",
-                 random_state=0):
+    def __init__(self, *, depth: Literal[1, 2, 3] = 3, learning_rate: float = 0.1,
+                 max_rounds: int = 300, patience: int = 30, lam: float = 1.0,
+                 min_weight: float = 20.0, max_bins: int = 32, validation_fraction: float = 0.15,
+                 max_features_d3: int | None = 32, max_features_d2: int | None = 128,
+                 feature_screen: Literal["lgbm", "fast"] = "lgbm", random_state: Seed = 0) -> None:
         self.depth = depth
         self.learning_rate = learning_rate
         self.max_rounds = max_rounds
@@ -510,7 +522,8 @@ class BoostedOptimalTrees(_AdditiveTrees):
         self.feature_screen = feature_screen
         self.random_state = random_state
 
-    def fit(self, X, y, sample_weight=None, y_soft=None):
+    def fit(self: SelfT, X: ArrayLike, y: ArrayLike, sample_weight: ArrayLike | None = None,
+            y_soft: ArrayLike | None = None) -> SelfT:
         """Fit the sum.
 
         Parameters

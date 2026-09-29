@@ -72,6 +72,9 @@ def check_distribution(dist):
             raise ValueError('The wheel contains Python or Numba cache files.')
         if not any(name.endswith('/licenses/LICENSE') for name in names):
             raise ValueError('The wheel is missing its license.')
+        for typed_file in ('bettertrees/py.typed', 'bettertrees/sums/budget.pyi'):
+            if typed_file not in names:
+                raise ValueError(f'The wheel is missing {typed_file}.')
     with tempfile.TemporaryDirectory(prefix='bettertrees-dist-') as scratch:
         scratch = Path(scratch)
         env = os.environ.copy()

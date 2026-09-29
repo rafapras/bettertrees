@@ -26,6 +26,10 @@ The repository requires access while it is private. For development, use
 use `python -m pip install ".[examples]"`. pandas is optional and is required for
 DataFrame inputs; the NumPy workflow below uses only the core dependencies.
 
+Public APIs include high-level [type hints](docs/typing.md) for autocomplete and
+typed projects. pandas inputs stay at the array-like level; no column-level
+typing or extra runtime dependency is required.
+
 ## Which model
 
 **Start here:** `BudgetClassifier(max_splits=b)` picks, without tuning, the model our
