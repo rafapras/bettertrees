@@ -248,6 +248,9 @@ class SumOfOptimalTrees(_AdditiveTrees):
         ``"greedy"`` grows each tree by the best single cut (the control).
     extra_stumps : int, default=0
         Stumps (depth 1) added after the trees, to fill the budget.
+    max_delta_step : float or None, default=None
+        Cap on each leaf's Newton step, in logits (as XGBoost's ``max_delta_step``);
+        prevents divergence on rare-class data. None = no cap.
 
     Attributes
     ----------
@@ -266,7 +269,7 @@ class SumOfOptimalTrees(_AdditiveTrees):
     def __init__(self, *, n_trees=2, depth=2, learning_rate="auto", lam=2.0,
                  min_weight=20.0, max_bins=16, backfit_sweeps=2, max_features_d3=24,
                  max_features_d2=128, feature_screen="lgbm", search="optimal",
-                 extra_stumps=0):
+                 extra_stumps=0, max_delta_step=None):
         self.n_trees = n_trees
         self.depth = depth
         self.learning_rate = learning_rate
@@ -279,6 +282,7 @@ class SumOfOptimalTrees(_AdditiveTrees):
         self.feature_screen = feature_screen
         self.search = search
         self.extra_stumps = extra_stumps
+        self.max_delta_step = max_delta_step
 
     def fit(self, X, y, sample_weight=None, y_soft=None):
         """Fit the sum.

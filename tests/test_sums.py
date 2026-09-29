@@ -506,3 +506,15 @@ def test_figs_max_delta_step_prevents_divergence_on_rare_class():
     assert roc_auc_score(y, capped.predict_proba(X)[:, 1]) > 0.8
     # the default keeps the original FIGS behaviour
     assert FIGSClassifier().max_delta_step is None
+
+
+def test_sum_of_optimal_trees_max_delta_step_on_rare_class():
+    from sklearn.metrics import roc_auc_score
+    from bettertrees import SumOfOptimalTrees
+    rng = np.random.default_rng(1)
+    X = rng.normal(size=(30000, 4))
+    logit = -7 + 4.0 * (X[:, 0] > 1.5) + 3.0 * (X[:, 1] > 1.0)
+    y = (rng.random(len(X)) < 1 / (1 + np.exp(-logit))).astype(int)
+    m = SumOfOptimalTrees(n_trees=1, depth=2, extra_stumps=1, max_delta_step=4.0).fit(X, y)
+    assert max(np.abs(t.value).max() for t in m.trees_) < 20
+    assert roc_auc_score(y, m.predict_proba(X)[:, 1]) > 0.8
