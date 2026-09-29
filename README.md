@@ -19,11 +19,16 @@ pip install -e ".[lightgbm,plot]"   # LightGBM feature screening (p > 128) and p
 
 ## Which model
 
+**Start here:** `BudgetClassifier(max_splits=b)` picks, without tuning, the model our
+benchmark validated for a budget of `b` cuts (below), and exposes all of its
+interpretation and editing methods.
+
 | regime | model | output |
 |---|---|---|
+| **any budget, no tuning** | **`BudgetClassifier`** | FIGS up to 64 cuts, `CompactTreeBooster` above |
 | one tree | `FastDecisionTreeClassifierCV` | a single tree; leaf count and hierarchical shrinkage chosen by CV |
 | **interpretable (4–16 cuts)** | `FIGSClassifier`, `SumOfOptimalTrees` | `logit(p) = base + Σ tree_k(x)`, a few shallow trees |
-| medium capacity (32–64 cuts) | `SumOfOptimalTrees` | the same sum with more trees |
+| medium capacity (32–64 cuts) | `FIGSClassifier(learning_rate=0.3)`, `SumOfOptimalTrees` | the same sum with more trees |
 | medium capacity, counted in distinct cuts | `CompactTreeBooster` | shrunken boosting of optimal trees; identical trees merged, so re-used cuts are free |
 | free capacity | `AdditiveTreeBooster` | a long sum of optimal depth-2 trees with early stopping |
 
@@ -45,11 +50,15 @@ voting and bagging ensembles, `permutation_importance`, `partial_dependence` and
 The sums are **binary** (they raise on a multiclass target); wrap them in
 `OneVsRestClassifier` for more classes. The single tree is natively multiclass.
 
-**Without tuning**, the rule our benchmark uses for a budget of `b` cuts:
+**The no-tuning rule** (`BudgetClassifier`) for a budget of `b` cuts:
 `FIGSClassifier(max_splits=b, max_delta_step=4.0)` up to 8 cuts,
 `FIGSClassifier(max_splits=b, learning_rate=0.3)` up to 64, and
 `CompactTreeBooster(max_splits=b)` above. `max_delta_step` caps each Newton step on a
 leaf; without it, a full step on a nearly pure leaf of rare-class data can diverge.
+
+Experimental pieces (no API guarantee) live in `bettertrees.experimental`: a tree that
+maximizes one class's precision (`PrecisionTreeClassifier`), trees grown from optimal
+depth-2 blocks (`fit_multilevel_tree`), ratio features, distillation and RuleFit.
 
 ## Examples
 
@@ -167,7 +176,10 @@ by Optuna (learning rate, λ, leaves per tree, minimum leaf) under the same cut 
 Where it does not help: at 128 cuts it ties LightGBM; hierarchical targets (`pol`) and
 high-order interactions (`electricity`), where one deep tree or boosting is the right
 shape; on some bases a well-tuned CART is as good (e.g. Medical-Appointment-No-Shows
-at 16 cuts). The default rpart (`method="class"`) prunes to zero cuts on rare-class data;
+at 16 cuts). With very few cuts, FIGS's greedy choice can spend all of them on one deep
+tree when the positive class is rare and concentrated in a subgroup (BAF fraud, 4 cuts:
+AUC 0.717 against 0.785 for four stumps); across 63 tasks FIGS and a sum of stumps
+tie at 4 cuts and FIGS is better at 8. The default rpart (`method="class"`) prunes to zero cuts on rare-class data;
 comparisons against it overstate any method's gain, so we do not report them.
 
 Earlier development runs (20 datasets, not re-run on the final splits): the additive

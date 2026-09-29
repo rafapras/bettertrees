@@ -47,11 +47,12 @@ one-feature effects plus one interaction, so we know what a good model should fi
     new_code_cell("""\
 from sklearn.tree import DecisionTreeClassifier
 
-from bettertrees import FIGSClassifier, SumOfOptimalTrees
+from bettertrees import BudgetClassifier, FIGSClassifier, SumOfOptimalTrees
 
 models = {
     "CART, 16 cuts (17 leaves)": DecisionTreeClassifier(
         max_leaf_nodes=17, min_samples_leaf=50, random_state=0),
+    "BudgetClassifier, 16 cuts (the no-tuning rule)": BudgetClassifier(max_splits=16),
     "FIGS, 16 cuts": FIGSClassifier(max_splits=16),
     "sum of optimal depth-2 trees, 16 cuts": SumOfOptimalTrees(
         n_trees=5, depth=2, extra_stumps=1),
