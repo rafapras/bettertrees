@@ -44,6 +44,9 @@ def _collect(node, thresholds):
         return
     if node.get("decision_type", "<=") != "<=":
         raise ValueError("only numerical '<=' splits are supported (no categorical splits).")
+    if node.get("missing_type") == "Zero":
+        raise ValueError("zero_as_missing splits are not supported; train LightGBM with "
+                         "zero_as_missing=False.")
     if node.get("missing_type") == "NaN" and not node.get("default_left", True):
         raise ValueError("a split sends NaN to the right; bettertrees always sends NaN left. "
                          "Fill NaN below the minimum before training LightGBM.")
@@ -58,6 +61,8 @@ def from_lightgbm(model, X, y, n_trees=None):
     ``X, y`` (the training data or a sample of it) set the sklearn state
     (``classes_``, feature names, ``n_features_in_``); ``n_trees`` keeps only
     the first trees. The raw score of LightGBM equals ``decision_function``.
+    Numerical inputs keep float64 precision. At most 254 distinct thresholds
+    per feature fit the internal uint8 bins; larger models are rejected.
     """
     booster = model.booster_ if hasattr(model, "booster_") else model
     info = booster.dump_model()
@@ -68,11 +73,17 @@ def from_lightgbm(model, X, y, n_trees=None):
     thresholds = [set() for _ in range(p)]
     for t in trees_info:
         _collect(t["tree_structure"], thresholds)
+    for f, cuts in enumerate(thresholds):
+        if len(cuts) > 254:
+            raise ValueError(f"feature {f} has {len(cuts)} distinct thresholds; "
+                             "at most 254 are supported by the uint8 bins. "
+                             "Import fewer trees or retrain with fewer bins.")
     out = TreeSum()
     Xv, classes, _, _ = fit_inputs(out, X, y)
     if Xv.shape[1] != p:
         raise ValueError(f"X has {Xv.shape[1]} columns, the model {p}.")
     out.classes_ = classes
+    out.input_dtype_ = "float64"
     out.bin_edges_ = tuple(np.array(sorted(s), dtype=np.float64) for s in thresholds)
     trees = []
     for t in trees_info:
@@ -109,7 +120,8 @@ class LightGBMRefitClassifier(_AdditiveTrees):
     Parameters
     ----------
     max_splits : int or None, default=None
-        If set, ``n_estimators = max_splits // (num_leaves - 1)`` (a cut budget).
+        Positive cut budget. The leaf limit is reduced when the budget is
+        smaller than ``num_leaves - 1``; ``n_estimators`` then fits that budget.
     n_estimators, num_leaves, learning_rate, reg_lambda, min_child_samples
         Passed to LightGBM.
     refit_lam : float or None, default=10.0
@@ -140,12 +152,19 @@ class LightGBMRefitClassifier(_AdditiveTrees):
     def fit(self, X, y, sample_weight=None):
         """Fit LightGBM, import, merge and refit (see the class docstring)."""
         import lightgbm as lgb
+        if self.max_splits is not None and (
+                isinstance(self.max_splits, bool | np.bool_)
+                or not isinstance(self.max_splits, int | np.integer)
+                or self.max_splits < 1):
+            raise ValueError("max_splits must be a positive integer or None.")
         X, classes, target, w = fit_inputs(self, X, y, sample_weight)
         low = np.nanmin(np.where(np.isnan(X), np.inf, X), axis=0)
         self.nan_fill_ = np.where(np.isfinite(low), low - 1.0, -1.0)
         Xf = np.where(np.isnan(X), self.nan_fill_, X)
         leaves = int(max(2, self.num_leaves))
-        n_est = (max(1, int(self.max_splits) // (leaves - 1)) if self.max_splits is not None
+        if self.max_splits is not None:
+            leaves = min(leaves, int(self.max_splits) + 1)
+        n_est = (int(self.max_splits) // (leaves - 1) if self.max_splits is not None
                  else int(self.n_estimators))
         self.lgbm_ = lgb.LGBMClassifier(
             n_estimators=n_est, num_leaves=leaves, max_depth=-1, learning_rate=self.learning_rate,
@@ -154,6 +173,7 @@ class LightGBMRefitClassifier(_AdditiveTrees):
             verbose=-1).fit(Xf, target.astype(int), sample_weight=w)
         imported = from_lightgbm(self.lgbm_, Xf, target.astype(int))
         self.classes_ = classes
+        self.input_dtype_ = imported.input_dtype_
         self.bin_edges_ = imported.bin_edges_
         self.trees_ = imported.trees_
         self.base_margin_ = imported.base_margin_
@@ -161,7 +181,8 @@ class LightGBMRefitClassifier(_AdditiveTrees):
         self.merge_duplicates()
         if self.refit_lam is not None and self.trees_:
             from ._common import rebin
-            self._refit_binned(rebin(Xf, self.bin_edges_), target, w, float(self.refit_lam),
+            self._refit_binned(rebin(Xf, self.bin_edges_, dtype=self.input_dtype_),
+                               target, w, float(self.refit_lam),
                                int(self.refit_sweeps))
         return self
 
@@ -172,7 +193,8 @@ class LightGBMRefitClassifier(_AdditiveTrees):
         X = predict_input(self, X, "trees_")
         # validated once here: handing the filled array back to the parent's
         # decision_function would re-validate it and warn about missing names
-        Xb = rebin(np.where(np.isnan(X), self.nan_fill_, X), self.bin_edges_)
+        Xb = rebin(np.where(np.isnan(X), self.nan_fill_, X), self.bin_edges_,
+                   dtype=getattr(self, "input_dtype_", np.float32))
         m = np.full(len(Xb), self.base_margin_)
         for tree in self.trees_:
             m += tree.value[tree.leaf_ids(Xb)]

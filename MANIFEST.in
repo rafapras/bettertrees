@@ -1,0 +1,5 @@
+include CHANGELOG.md
+recursive-include tests *.py
+recursive-include examples *.py *.ipynb
+recursive-include tools *.py *.npz
+recursive-include docs *.md *.bib

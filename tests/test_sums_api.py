@@ -6,6 +6,8 @@ import matplotlib
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn import __version__ as sklearn_version
+from sklearn.utils import estimator_checks
 from sklearn.utils.estimator_checks import parametrize_with_checks
 
 from bettertrees.sums import (
@@ -32,6 +34,11 @@ ESTIMATORS = [SumOfOptimalTrees(), FIGSClassifier(), AdditiveTreeBooster(max_rou
 
 
 def _expected_failures(est):
+    if isinstance(est, LightGBMRefitClassifier):
+        # LightGBM uses row counts for bins/min_child_samples: a weighted row is
+        # not identical to several copies even when the objective mass matches.
+        return {"check_sample_weight_equivalence_on_dense_data":
+                "LightGBM row-count bins and leaf support are not invariant to repetition"}
     if isinstance(est, BaggedFIGSClassifier | RashomonFIGSClassifier):
         # bootstrap replicates and the validation split both draw ROWS
         return {"check_sample_weight_equivalence_on_dense_data":
@@ -46,15 +53,34 @@ def _expected_failures(est):
 
 
 @parametrize_with_checks(ESTIMATORS, expected_failed_checks=_expected_failures)
-def test_sklearn_compatible(estimator, check):
-    check(estimator)
+def test_sklearn_compatible(estimator, check, monkeypatch):
+    check_name = getattr(getattr(check, "func", check), "__name__", "")
+    if sklearn_version.startswith("1.6.") and check_name in {
+            "check_sample_weight_equivalence_on_dense_data",
+            "check_sample_weight_equivalence_on_sparse_data"}:
+        # sklearn 1.6 maps binary-only targets using y.flat[0]. This checker
+        # shuffles the weighted rows but not their repetitions, so it can turn
+        # them into different classification problems. Choose the smallest
+        # original label in both arms while retaining the original assertions.
+        original = estimator_checks._enforce_estimator_tags_y
+
+        def coherent_labels(est, y):
+            order = np.argsort(y, kind="stable")
+            mapped = original(est, y[order])
+            return mapped[np.argsort(order)]
+
+        with monkeypatch.context() as patch:
+            patch.setattr(estimator_checks, "_enforce_estimator_tags_y", coherent_labels)
+            check(estimator)
+    else:
+        check(estimator)
 
 
 def _data(seed=0, n=3000):
     rng = np.random.default_rng(seed)
     X = pd.DataFrame(rng.normal(size=(n, 4)), columns=["age", "income", "debt", "score"])
     X.loc[rng.random(n) < 0.1, "income"] = np.nan
-    logit = X.age + np.nan_to_num(X.income) * X.debt + 0.5 * np.sign(X.score)
+    logit = X.age + np.nan_to_num(X.income.to_numpy(copy=True)) * X.debt + 0.5 * np.sign(X.score)
     y = (rng.random(n) < 1 / (1 + np.exp(-logit))).astype(int)
     return X, y
 

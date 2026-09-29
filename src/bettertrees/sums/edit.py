@@ -185,7 +185,8 @@ class TreeEditMixin:
         target = (yv == self.classes_[1]).astype(np.float64)
         if not np.isin(yv, self.classes_).all():
             raise ValueError("y has labels not seen at fit time.")
-        return rebin(Xv, self.bin_edges_), target, as_weights(sample_weight, len(Xv))
+        return (rebin(Xv, self.bin_edges_, dtype=getattr(self, "input_dtype_", np.float32)),
+                target, as_weights(sample_weight, len(Xv)))
 
     def _refit_binned(self, Xb, target, w, lam, sweeps, trees=None, refit_base=True,
                       monotone=None):
@@ -240,7 +241,8 @@ class TreeEditMixin:
         vals = np.array([t.value[k] for k in leaves], dtype=np.float64)
         value = float(vals.mean())
         if X is not None:
-            Xb = rebin(predict_input(self, X, "trees_"), self.bin_edges_)
+            Xb = rebin(predict_input(self, X, "trees_"), self.bin_edges_,
+                       dtype=getattr(self, "input_dtype_", np.float32))
             w = as_weights(sample_weight, len(Xb))
             ids = t.leaf_ids(Xb)
             mass = np.array([w[ids == k].sum() for k in leaves])
@@ -301,7 +303,9 @@ class TreeEditMixin:
                 self.base_margin_ += float(tree.value[0])
                 continue
             if k in index:
-                kept[index[k]].value = kept[index[k]].value + tree.value
+                # Node IDs depend on the order cuts were added. Match both
+                # trees in preorder before adding corresponding leaf values.
+                kept[index[k]].value = kept[index[k]].value + _reachable(tree).value
             else:
                 index[k] = len(kept)
                 kept.append(_reachable(tree))

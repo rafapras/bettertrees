@@ -204,7 +204,8 @@ class _AdditiveTrees(TreeEditMixin, InterpretableSumMixin, ClassifierMixin, Base
 
     def decision_function(self, X):
         """Logit of ``P(y = classes_[1])``: base plus the sum of the trees."""
-        Xb = rebin(predict_input(self, X, "trees_"), self.bin_edges_)
+        Xb = rebin(predict_input(self, X, "trees_"), self.bin_edges_,
+                   dtype=getattr(self, "input_dtype_", np.float32))
         m = np.full(len(Xb), self.base_margin_)
         for tree in self.trees_:
             m += tree.value[tree.leaf_ids(Xb)]

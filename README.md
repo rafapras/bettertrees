@@ -12,10 +12,19 @@ stays a readable scorecard.
 
 ## Install
 
+From a checkout (Python 3.10 or newer):
+
 ```bash
-pip install -e .                    # numpy, numba, scikit-learn
-pip install -e ".[lightgbm,plot]"   # LightGBM feature screening (p > 128) and plots
+git clone https://github.com/rafapras/bettertrees.git
+cd bettertrees
+python -m pip install .                    # numpy, numba, scikit-learn
+python -m pip install ".[lightgbm,plot]"    # optional screening and plots
 ```
+
+The repository requires access while it is private. For development, use
+`python -m pip install -e ".[test,examples]"`; for the example notebooks alone,
+use `python -m pip install ".[examples]"`. pandas is optional and is required for
+DataFrame inputs; the NumPy workflow below uses only the core dependencies.
 
 ## Which model
 
@@ -35,8 +44,12 @@ interpretation and editing methods.
 - `FIGSClassifier(max_splits=b)` grows several trees at once, one cut at a time
   (FIGS, Tan et al. 2022), with Newton leaves in logit space.
 - `SumOfOptimalTrees(n_trees=K, depth=2, extra_stumps=r)` uses `3K + r` cuts:
-  each depth-2 tree is the **optimal** Newton tree on the current residual
-  (exhaustive search over bins), followed by backfitting. `search="greedy"`
+  each depth-2 tree optimizes the regularized Newton gain on the current residual
+  over its bin thresholds and selected features, followed by backfitting. This is
+  a local tree search, not a globally optimal ensemble or an exhaustive search
+  over all real-valued thresholds. Feature screening restricts the search when
+  there are more than `max_features_d2` features (128 by default); depth 3 uses
+  `max_features_d3` (24 by default). `search="greedy"`
   swaps the optimal search for a greedy one (the paired control in our benchmarks).
 
 All estimators are scikit-learn compatible (`GridSearchCV`, `cross_val_score`,
@@ -49,6 +62,13 @@ voting and bagging ensembles, `permutation_importance`, `partial_dependence` and
 
 The sums are **binary** (they raise on a multiclass target); wrap them in
 `OneVsRestClassifier` for more classes. The single tree is natively multiclass.
+
+Zero-weight rows are removed before training and binning. Positive weights scale
+the loss and Hessian masses; the sums' quantile bins are learned from the active
+rows, without replicating them by weight. Repeating rows can therefore change the
+bins or internal validation splits. LightGBM also uses row counts for its minimum
+leaf size. Treat sample weights as objective weights, not as a promise that
+duplicating rows produces an identical model.
 
 **The no-tuning rule** (`BudgetClassifier`) for a budget of `b` cuts:
 `FIGSClassifier(max_splits=b, max_delta_step=4.0)` up to 8 cuts,
@@ -78,9 +98,10 @@ known effects (no download):
 from sklearn.datasets import load_breast_cancer
 from bettertrees import FIGSClassifier
 
-X, y = load_breast_cancer(return_X_y=True, as_frame=True)  # a DataFrame (needs pandas) gives feature names
+data = load_breast_cancer()
+X, y = data.data, data.target
 model = FIGSClassifier(max_splits=6).fit(X, y)
-print(model.explain())
+print(model.explain(feature_names=data.feature_names))
 ```
 
 ```
@@ -126,8 +147,12 @@ model.monotone_violations("income", increasing=False)         # exact check (emp
 model.cut_alternatives(X_val, y_val, tree, node, epsilon=0.01)  # near-equivalent cuts
 ```
 
-A LightGBM model becomes an editable sum with `from_lightgbm(lgbm, X, y)` (exact
-predictions); `LightGBMRefitClassifier` also refits its leaves jointly, which beats the
+A supported binary LightGBM model becomes an editable sum with
+`from_lightgbm(lgbm, X, y)` while preserving its predictions. Imports require
+numerical `<=` cuts, no `zero_as_missing` splits, no NaN-right splits, and at most
+254 distinct thresholds per feature. Imported inputs and thresholds retain
+float64 precision; native models bin inputs as float32, so their thresholds refer
+to that representation. `LightGBMRefitClassifier` also refits its leaves jointly, which beats the
 same LightGBM at 4-64 cuts in our benchmark.
 
 `RashomonFIGSClassifier` runs a local search that mutates one cut at a time and keeps
@@ -143,7 +168,7 @@ Every sum exposes the same output:
 
 ```python
 model.rules()                   # [(tree, conditions, logit value)] per leaf
-model.to_dict()                 # the same as JSON (deploy without the package)
+model.to_dict()                 # versioned executable model + human-readable rules
 model.predict_contributions(X)  # (n, n_trees); base + row sum = decision_function
 model.plot_contributions(x)     # waterfall of one prediction
 model.plot_shapes()             # shape functions of the single-feature trees
@@ -155,7 +180,16 @@ model.to_shap_model()           # exact TreeSHAP via shap.TreeExplainer
 The single tree (`FastDecisionTreeClassifier` and its CV version) has
 `export_text()`, with the leaf probabilities `predict_proba` returns.
 
+Sum exports use schema version 1. For independent prediction, use the full
+precision arrays and preprocessing metadata, rather than the rounded rules shown
+to humans. See [the export format and standalone predictor](docs/export.md).
+
 ## Benchmark summary
+
+These figures summarize prior research runs. This checkout includes synthetic
+tests and examples, but does not include the benchmark datasets, split manifests
+or complete run outputs needed to reproduce the table. The package's CI checks
+behavior and distribution integrity; it does not reproduce these statistical claims.
 
 Binary classification, OpenML/TabArena suites plus four Kaggle sets; 28 bases with
 10k–100k rows (splits not used in development) and 28 with more than 100k (one

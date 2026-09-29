@@ -66,7 +66,7 @@ def crossfit_teacher(X, y, *, n_splits=5, random_state=0, params=None,
         n_val = int(round(early_stopping_fraction * len(tr)))
         fit_idx, val_idx = tr[n_val:], tr[:n_val]
         model = lgb.LGBMClassifier(**cfg)
-        model.fit(X[fit_idx], yy[fit_idx], eval_X=X[val_idx], eval_y=yy[val_idx],
+        model.fit(X[fit_idx], yy[fit_idx], eval_set=[(X[val_idx], yy[val_idx])],
                   callbacks=[lgb.early_stopping(50, verbose=False)])
         p[te] = model.predict_proba(X[te])[:, 1]
         fold[te] = k
