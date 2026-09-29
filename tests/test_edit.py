@@ -7,6 +7,7 @@ from sklearn.base import clone
 from sklearn.metrics import log_loss
 
 from bettertrees import (
+    AdditiveTreeBooster,
     BaggedFIGSClassifier,
     CompactTreeBooster,
     FIGSClassifier,
@@ -21,6 +22,7 @@ MODELS = [
     lambda: CompactTreeBooster(max_splits=12, depth=1),
     lambda: BaggedFIGSClassifier(max_splits=8, n_bags=3),
     lambda: RashomonFIGSClassifier(max_splits=8, n_mutations=5),
+    lambda: AdditiveTreeBooster(max_rounds=15),
 ]
 
 
@@ -153,3 +155,21 @@ def test_shap_follows_edits():
     sv = ex.shap_values(X.iloc[:50].to_numpy())
     np.testing.assert_allclose(ex.expected_value + sv.sum(axis=1),
                                m.decision_function(X.iloc[:50]), atol=1e-6)
+
+
+def test_prune_with_data_weights_the_removed_leaves_by_their_rows():
+    X, y = _data()
+    m = SumOfOptimalTrees(n_trees=2, depth=2).fit(X, y)
+    t = m.trees_[0]
+    node = t.left[0] if t.left[t.left[0]] != -1 else t.right[0]  # an internal child of the root
+    assert t.left[node] != -1
+    ids = t.leaf_ids(m._binned_data(X, y, None)[0])
+    kids = [t.left[node], t.right[node]]
+    n_kid = np.array([(ids == k).sum() for k in kids])
+    expected = float(np.dot([t.value[k] for k in kids], n_kid) / n_kid.sum())
+    unweighted = float(np.mean([t.value[k] for k in kids]))
+    weighted = clone(m).fit(X, y).prune(0, node, X=X)
+    plain = clone(m).fit(X, y).prune(0, node)
+    leaf_values = {round(v, 12) for v in weighted.trees_[0].value}
+    assert round(expected, 12) in leaf_values
+    assert round(unweighted, 12) in {round(v, 12) for v in plain.trees_[0].value}

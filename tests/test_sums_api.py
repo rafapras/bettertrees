@@ -117,6 +117,23 @@ def test_shape_functions_and_plots():
     assert "P =" in ax.get_xlabel()
 
 
+@pytest.mark.parametrize("make", [MODELS[2], MODELS[0]])
+def test_waterfall_labels_are_the_leaf_each_row_falls_in(make):
+    # FIGS appends nodes, so node-id order differs from the order rules() lists the leaves;
+    # the waterfall once paired each bar with the wrong leaf's conditions
+    X, y = _data()
+    m = make().fit(X, y)
+    rules = {(k, " and ".join(conds) or "always", round(v, 10)) for k, conds, v in m.rules(precision=4)}
+    for i in range(20):
+        c = m.predict_contributions(X.iloc[[i]])[0]
+        ax = m.plot_contributions(X.iloc[i].to_numpy(), max_terms=len(c))
+        labels = [t.get_text() for t in ax.get_yticklabels()][1:]  # skip "base"
+        order = np.argsort(-np.abs(c), kind="stable")
+        for label, k in zip(labels, order):
+            assert (int(k), label, round(float(c[k]), 10)) in rules
+        matplotlib.pyplot.close("all")
+
+
 def test_predict_rejects_wrong_width_and_unfitted():
     from sklearn.exceptions import NotFittedError
     X, y = _data()

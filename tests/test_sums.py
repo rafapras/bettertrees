@@ -496,6 +496,7 @@ def test_figs_max_delta_step_prevents_divergence_on_rare_class():
     # rare class (~0.5%) concentrated in a small region: the full Newton step on the
     # nearly pure leaf is huge; the cap keeps leaves bounded and the ranking right
     from sklearn.metrics import roc_auc_score
+
     from bettertrees import FIGSClassifier
     rng = np.random.default_rng(0)
     X = rng.normal(size=(40000, 5))
@@ -510,6 +511,7 @@ def test_figs_max_delta_step_prevents_divergence_on_rare_class():
 
 def test_sum_of_optimal_trees_max_delta_step_on_rare_class():
     from sklearn.metrics import roc_auc_score
+
     from bettertrees import SumOfOptimalTrees
     rng = np.random.default_rng(1)
     X = rng.normal(size=(30000, 4))

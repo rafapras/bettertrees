@@ -386,6 +386,7 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         else:
             self.feature_names_in_ = np.asarray(feature_names, dtype=object)
         self.bin_edges_ = edges
+        self.nan_features_ = np.isnan(X).any(axis=0)  # as in the sums: which columns had NaN
         self.monotonic_cst_ = monotonic_directions
         self.monotonic_positive_class_index_ = (
             monotonic_positive_class_index if monotonic_directions is not None
@@ -463,6 +464,57 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
             self.nodes_.feature, self.nodes_.threshold,
             self.nodes_.missing_left,
         ), dtype=np.intp)
+
+    def export_text(self, feature_names=None, precision=4):
+        """The tree drawn as text, like ``sklearn.tree.export_text``.
+
+        Each leaf shows the probability ``predict_proba`` gives (with shrinkage,
+        smoothing or monotone projection applied) and its training weight. A cut
+        reads ``x <= v``; for a column that had NaN in training, the side that
+        receives them is marked "or missing".
+        """
+        from .postprocess import node_probabilities
+        check_is_fitted(self, "nodes_")
+        nodes = self.nodes_
+        names = (list(feature_names) if feature_names is not None
+                 else list(getattr(self, "feature_names_in_", []))
+                 or [f"x{j}" for j in range(self.n_features_in_)])
+        probs = node_probabilities(
+            nodes, np.arange(len(nodes.left)), self.monotonic_leaf_probabilities_,
+            positive_class=(self.monotonic_positive_class_index_
+                            if self.monotonic_positive_class_index_ is not None else 1),
+            leaf_smoothing=self.leaf_smoothing,
+            leaf_probabilities=getattr(self, "leaf_probabilities_", None))
+        binary = len(self.classes_) == 2
+
+        def leaf(node):
+            p, w = probs[node], float(nodes.class_weight[node].sum())
+            if binary:
+                return f"P({self.classes_[1]}) = {p[1]:.{precision}f}  (weight {w:.6g})"
+            k = int(np.argmax(p))
+            return f"class {self.classes_[k]}, P = {p[k]:.{precision}f}  (weight {w:.6g})"
+
+        lines = []
+
+        def walk(node, depth):
+            pad = "|   " * depth
+            if nodes.left[node] == -1:
+                lines.append(f"{pad}|--- {leaf(node)}")
+                return
+            name = names[int(nodes.feature[node])]
+            thr = f"{float(nodes.threshold[node]):.{precision}g}"
+            nan = getattr(self, "nan_features_", None)
+            has_nan = nan is None or bool(nan[int(nodes.feature[node])])
+            miss_left = bool(nodes.missing_left[node])
+            left_tag = " or missing" if has_nan and miss_left else ""
+            right_tag = " or missing" if has_nan and not miss_left else ""
+            lines.append(f"{pad}|--- {name} <= {thr}{left_tag}")
+            walk(int(nodes.left[node]), depth + 1)
+            lines.append(f"{pad}|--- {name} >  {thr}{right_tag}")
+            walk(int(nodes.right[node]), depth + 1)
+
+        walk(0, 0)
+        return "\n".join(lines)
 
     def get_depth(self):
         """Maximum depth of the tree; the root has depth zero."""

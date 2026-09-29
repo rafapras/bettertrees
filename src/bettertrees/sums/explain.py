@@ -81,6 +81,24 @@ def leaf_rules(tree, edges, names=None, nan_features=None, precision=6):
     return out
 
 
+def leaf_order(tree):
+    """Leaf node ids in the order ``leaf_rules`` lists them (depth first, left first).
+
+    Not the node-id order: FIGS and the editing API append nodes, so a leaf created
+    later can sit to the left of an older one."""
+    out = []
+
+    def walk(node):
+        if tree.left[node] == -1:
+            out.append(node)
+            return
+        walk(tree.left[node])
+        walk(tree.right[node])
+
+    walk(0)
+    return out
+
+
 class InterpretableSumMixin:
     """Shared interpretable output; the class defines ``_explain_trees()``."""
 
@@ -301,7 +319,10 @@ class InterpretableSumMixin:
     def plot_contributions(self, x, feature_names=None, max_terms=12, ax=None):
         """Waterfall of one prediction: the base plus the leaf ``x`` falls in, per tree."""
         plt = _pyplot()
-        x = np.asarray(x, dtype=float).reshape(1, -1)
+        if hasattr(x, "to_frame"):  # a pandas row (Series): keep the column names
+            x = x.to_frame().T.astype(float)
+        elif not hasattr(x, "columns"):
+            x = np.asarray(x, dtype=float).reshape(1, -1)
         contrib = self.predict_contributions(x)[0]
         x = predict_input(self, x, "base_margin_")
         trees = self._explain_trees()
@@ -311,8 +332,7 @@ class InterpretableSumMixin:
         for tree in trees:
             leaf = int(tree.leaf_ids(Xb)[0])
             rules = leaf_rules(tree, self.bin_edges_, names, nan, precision=4)
-            leaves = [k for k, lft in enumerate(tree.left) if lft == -1]
-            labels.append(" and ".join(rules[leaves.index(leaf)][0]) or "always")
+            labels.append(" and ".join(rules[leaf_order(tree).index(leaf)][0]) or "always")
         order = np.argsort(-np.abs(contrib), kind="stable")
         keep, rest = order[:max_terms], order[max_terms:]
         steps = [("base", float(self.base_margin_))]

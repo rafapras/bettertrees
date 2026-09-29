@@ -34,6 +34,7 @@ from ._common import (
     top_features,
 )
 from ._kernels import best_cut_1d, best_depth2, depth2_leaf_ids, hist_1d, newton_leaf_values
+from .edit import TreeEditMixin
 from .explain import InterpretableSumMixin
 from .smalltrees import SmallTree, _side
 
@@ -43,7 +44,7 @@ def _log_loss(y, m, w):
     return float(-np.sum(w * (y * np.log(p) + (1 - y) * np.log(1 - p))) / np.sum(w))
 
 
-class AdditiveTreeBooster(InterpretableSumMixin, ClassifierMixin, BaseEstimator):
+class AdditiveTreeBooster(TreeEditMixin, InterpretableSumMixin, ClassifierMixin, BaseEstimator):
     """Long sum of shallow optimal Newton trees (depth 1/2), with early stopping.
 
     Free capacity with a simple structure: each term is a tree with at most two
@@ -80,9 +81,13 @@ class AdditiveTreeBooster(InterpretableSumMixin, ClassifierMixin, BaseEstimator)
     Attributes
     ----------
     trees_ : list of SmallTree
-        The terms as trees (see ``get_trees`` for real thresholds).
+        The terms as trees (see ``get_trees`` for real thresholds). Predictions
+        read them, so the editing API (``prune``, ``set_cut``, ``refit_leaves``, ...)
+        works as in the other sums.
     terms_ : list
-        Compact internal representation of the terms (bins).
+        Compact representation of the terms as fitted (bins); not updated by edits.
+    lam_, learning_rate_ : float
+        Effective regularization and shrinkage (the editing refit uses ``lam_``).
     base_margin_ : float
         Initial constant logit.
     classes_, n_features_in_, feature_names_in_, bin_edges_, nan_features_
@@ -199,6 +204,7 @@ class AdditiveTreeBooster(InterpretableSumMixin, ClassifierMixin, BaseEstimator)
         self.classes_ = classes
         self.n_features_in_ = X.shape[1]
         self.history_ = np.array(history)
+        self.lam_, self.learning_rate_ = float(self.lam), float(self.learning_rate)
         self.trees_ = self._terms_to_trees()
         return self
 
@@ -218,14 +224,16 @@ class AdditiveTreeBooster(InterpretableSumMixin, ClassifierMixin, BaseEstimator)
 
     def decision_function(self, X):
         """Logit of ``P(y = classes_[1])``: base plus the sum of the terms."""
-        Xb = rebin(predict_input(self, X, "terms_"), self.bin_edges_)
+        Xb = rebin(predict_input(self, X, "trees_"), self.bin_edges_)
         m = np.full(len(Xb), self.base_margin_)
-        for spec, values in self.terms_:
-            m += values[depth2_leaf_ids(Xb, *spec)]
+        for tree in self.trees_:
+            m += tree.value[tree.leaf_ids(Xb)]
         return m
 
     def scorecard(self, feature_names=None):
-        """Readable terms: a list of (rule, logit value) per leaf of each term.
+        """Readable terms: a list of (rule, logit value) per leaf of each term, as fitted.
+
+        Reads ``terms_``, so it ignores later edits; ``rules()`` always reflects them.
 
         Identical leaves on a side without a cut appear once. ``x <= v``
         includes NaN (NaN always goes left).

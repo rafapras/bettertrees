@@ -1,9 +1,10 @@
 """Mechanical editing of a fitted sum of trees, and its local Rashomon view.
 
 Every sum whose prediction is ``base_margin_ + Σ_k tree_k`` (FIGS, the sums of
-optimal trees, the bagged/Rashomon FIGS, ``CompactTreeBooster``) gets these
-methods. Cuts live on the bins learned at fit time: a new threshold snaps to
-the nearest bin edge (the method returns the value actually used). After a
+optimal trees, the bagged/Rashomon FIGS, ``CompactTreeBooster``,
+``AdditiveTreeBooster``) gets these methods. Cuts live on the bins learned at fit
+time: a new threshold snaps to the nearest bin edge (the method returns the value
+actually used). After a
 structural edit the leaves keep their old values until ``refit_leaves`` is
 called with data, so an edit is never silently re-estimated.
 
@@ -220,22 +221,34 @@ class TreeEditMixin:
 
     # ---------------------------------------------------------------- editing
 
-    def prune(self, tree, node):
+    def prune(self, tree, node, X=None, sample_weight=None):
         """Turn the cut ``node`` of ``tree`` into a leaf (its subtree is removed).
 
-        The new leaf takes the mean of the removed leaves; call ``refit_leaves``
-        to re-estimate. Returns self."""
+        The new leaf takes the mean of the removed leaves, weighted by the rows of
+        ``X`` that reach each one (pass the training data). Without ``X`` the mean
+        is unweighted, because leaf sizes are not stored: a tiny leaf then counts as
+        much as a large one. ``refit_leaves`` re-estimates properly. Returns self."""
+        from ._common import predict_input
         t = self._check_node(tree, node, internal=True)
-        stack, vals = [node], []
+        stack, leaves = [node], []
         while stack:
             k = stack.pop()
             if t.left[k] == -1:
-                vals.append(t.value[k])
+                leaves.append(k)
             else:
                 stack += [t.left[k], t.right[k]]
+        vals = np.array([t.value[k] for k in leaves], dtype=np.float64)
+        value = float(vals.mean())
+        if X is not None:
+            Xb = rebin(predict_input(self, X, "trees_"), self.bin_edges_)
+            w = as_weights(sample_weight, len(Xb))
+            ids = t.leaf_ids(Xb)
+            mass = np.array([w[ids == k].sum() for k in leaves])
+            if mass.sum() > 0:
+                value = float(vals @ mass / mass.sum())
         t.left[node] = t.right[node] = -1
         t.feature[node] = t.threshold[node] = -1
-        t.value[node] = float(np.mean(vals))
+        t.value[node] = value
         self.trees_[tree] = _reachable(t)
         return self
 

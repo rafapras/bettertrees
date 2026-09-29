@@ -77,6 +77,7 @@ class FastDecisionTreeClassifierCV(ClassifierMixin, BaseEstimator):
             raise ValueError("shrinkage_grid must contain values > 0.")
         if int(self.cv) < 2:
             raise ValueError("cv must be >= 2.")
+        X_input = X  # the final fit gets the original input, so it keeps the column names
         X = np.asarray(X, dtype=np.float32)
         y = np.asarray(y)
         classes, encoded = np.unique(y, return_inverse=True)
@@ -108,9 +109,14 @@ class FastDecisionTreeClassifierCV(ClassifierMixin, BaseEstimator):
         self.best_params_ = dict(max_leaf_nodes=leaves[i], leaf_shrinkage=shrinkage[j])
         self.cv_scores_ = scores
         self.best_estimator_ = self._tree(**self.best_params_).fit(
-            X, y, sample_weight=sample_weight)
+            X_input, y, sample_weight=sample_weight)
         self.classes_ = self.best_estimator_.classes_
         self.n_features_in_ = self.best_estimator_.n_features_in_
+        # the inner tree validates names at predict time; mirror them here (sklearn contract)
+        if hasattr(self.best_estimator_, "feature_names_in_"):
+            self.feature_names_in_ = self.best_estimator_.feature_names_in_
+        else:
+            self.__dict__.pop("feature_names_in_", None)
         return self
 
     def predict_proba(self, X):
@@ -124,3 +130,8 @@ class FastDecisionTreeClassifierCV(ClassifierMixin, BaseEstimator):
     def apply(self, X):
         check_is_fitted(self, "best_estimator_")
         return self.best_estimator_.apply(X)
+
+    def export_text(self, feature_names=None, precision=4):
+        """The selected tree as text (see ``FastDecisionTreeClassifier.export_text``)."""
+        check_is_fitted(self, "best_estimator_")
+        return self.best_estimator_.export_text(feature_names, precision)

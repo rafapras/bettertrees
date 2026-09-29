@@ -109,3 +109,31 @@ def test_cv_handles_multiclass_and_string_labels():
                                          random_state=1).fit(X, labels)
     assert set(model.predict(X)) <= set(labels)
     assert model.predict_proba(X).shape == (len(X), 3)
+
+
+def test_cv_keeps_column_names_and_rejects_reordered_columns():
+    # the CV once fitted the final tree on a NumPy copy: names were lost and a DataFrame
+    # with the columns in another order was scored without any error
+    pd = pytest.importorskip("pandas")
+    X, y = _data()
+    frame = pd.DataFrame(X, columns=[f"f{j}" for j in range(X.shape[1])])
+    model = FastDecisionTreeClassifierCV(leaves_grid=(2, 8), cv=3).fit(frame, y)
+    assert list(model.feature_names_in_) == list(frame.columns)
+    with pytest.raises(ValueError):
+        model.predict_proba(frame[frame.columns[::-1]])
+    # a refit on an array drops the old names
+    assert not hasattr(model.fit(X, y), "feature_names_in_")
+
+
+@pytest.mark.parametrize("kwargs", [dict(), dict(leaf_shrinkage=10.0)])
+def test_export_text_shows_the_probabilities_predict_proba_returns(kwargs):
+    import re
+    X, y = _data()
+    tree = FastDecisionTreeClassifier(max_leaf_nodes=9, **kwargs).fit(X, y)
+    text = tree.export_text(precision=10)
+    shown = [float(v) for v in re.findall(r"P\(\S+\) = ([0-9.]+)", text)]
+    assert len(shown) == tree.get_n_leaves()
+    predicted = {round(v, 10) for v in tree.predict_proba(X)[:, 1]}
+    assert predicted <= {round(v, 10) for v in shown}
+    cv = FastDecisionTreeClassifierCV(leaves_grid=(2, 8), cv=3).fit(X, y)
+    assert cv.export_text().count("P(") == cv.best_estimator_.get_n_leaves()

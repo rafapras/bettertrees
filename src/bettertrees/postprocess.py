@@ -151,6 +151,15 @@ def predict_proba_nodes(X, nodes, positive_leaf_probabilities=None,
     """
     ids = apply_nodes(X, nodes.left, nodes.right, nodes.feature,
                       nodes.threshold, nodes.missing_left)
+    return node_probabilities(nodes, ids, positive_leaf_probabilities, positive_class,
+                              leaf_smoothing, leaf_probabilities)
+
+
+def node_probabilities(nodes, ids, positive_leaf_probabilities=None, positive_class=1,
+                       leaf_smoothing=0.0, leaf_probabilities=None):
+    """Probabilities (len(ids), K) of the nodes ``ids``: the rule ``predict_proba`` uses,
+    shared with the text export so the two can never disagree."""
+    ids = np.asarray(ids, dtype=np.intp)
     mass = nodes.class_weight[ids]
     totals = mass.sum(axis=1, keepdims=True)
     if (mass < 0).any() or not np.isfinite(mass).all() or (totals <= 0).any():
