@@ -167,6 +167,13 @@ class LightGBMRefitClassifier(_AdditiveTrees):
 
     def decision_function(self, X):
         """Logit of ``P(y = classes_[1])`` (NaN filled as at fit time)."""
+        from ._common import rebin
         check_is_fitted(self, "trees_")
         X = predict_input(self, X, "trees_")
-        return super().decision_function(np.where(np.isnan(X), self.nan_fill_, X))
+        # validated once here: handing the filled array back to the parent's
+        # decision_function would re-validate it and warn about missing names
+        Xb = rebin(np.where(np.isnan(X), self.nan_fill_, X), self.bin_edges_)
+        m = np.full(len(Xb), self.base_margin_)
+        for tree in self.trees_:
+            m += tree.value[tree.leaf_ids(Xb)]
+        return m

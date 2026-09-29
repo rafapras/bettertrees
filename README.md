@@ -38,7 +38,12 @@ All estimators are scikit-learn compatible (`GridSearchCV`, `cross_val_score`,
 pipelines), accept NaN (missing values get their own bin and always go left),
 keep DataFrame column names (and reject a DataFrame whose columns are renamed or
 reordered at predict time), and the sums store the effective hyperparameters in
-`lam_` and `learning_rate_`.
+`lam_` and `learning_rate_`. They work inside pipelines, `GridSearchCV`,
+`CalibratedClassifierCV` (also on a fitted model through `FrozenEstimator`), stacking,
+voting and bagging ensembles, `permutation_importance`, `partial_dependence` and pickle.
+
+The sums are **binary** (they raise on a multiclass target); wrap them in
+`OneVsRestClassifier` for more classes. The single tree is natively multiclass.
 
 **Without tuning**, the rule our benchmark uses for a budget of `b` cuts:
 `FIGSClassifier(max_splits=b, max_delta_step=4.0)` up to 8 cuts,

@@ -159,3 +159,20 @@ def test_shap_tree_explainer_reproduces_logit(make):
     sv = ex.shap_values(X[:200])
     np.testing.assert_allclose(ex.expected_value + sv.sum(axis=1),
                                m.decision_function(X[:200]), atol=1e-5)
+
+
+@pytest.mark.parametrize("make", [
+    *MODELS,
+    lambda: pytest.importorskip("bettertrees").LightGBMRefitClassifier(n_estimators=10),
+])
+def test_dataframe_in_sklearn_tools_raises_no_feature_name_warning(make):
+    # LightGBMRefitClassifier re-validated its own filled array and warned on every call
+    import warnings
+    pytest.importorskip("lightgbm")
+    X, y = _data()
+    with warnings.catch_warnings():  # direct calls: sklearn's CV helpers swallow errors
+        warnings.filterwarnings("error", message=".*feature names.*")
+        m = make().fit(X, y)
+        m.predict_proba(X)
+        m.predict(X)
+        m.decision_function(X)
