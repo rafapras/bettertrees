@@ -46,6 +46,11 @@ follow_imports = "silent"
 ignore_missing_imports = true
 strict = true
 
+# scikit-learn ships no annotations, so its base classes are Any for mypy
+[[tool.mypy.overrides]]
+module = "bettertrees.sums.budget"
+disallow_subclassing_any = false
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"

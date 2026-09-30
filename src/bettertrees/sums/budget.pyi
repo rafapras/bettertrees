@@ -39,7 +39,7 @@ class BudgetClassifier(InterpretableSumMixin, ClassifierMixin, BaseEstimator):
     def refit_leaves(self, X: ArrayLike, y: ArrayLike,
                      sample_weight: ArrayLike | None = ..., lam: float | None = ...,
                      sweeps: int = ..., trees: Sequence[int] | None = ...,
-                     refit_base: bool = True,
+                     refit_base: bool = ...,
                      monotone: MonotoneConstraints | None = ...) -> _BudgetModel: ...
     def monotone_violations(self, feature: int | str, increasing: bool = ...,
                             tol: float = ...) -> list[tuple[int, int, int, float]]: ...
