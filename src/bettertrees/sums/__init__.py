@@ -4,7 +4,7 @@
 - ``InterleavedTreeClassifier`` (Interleaved Tree Model; ``FIGSClassifier`` is the same
   class): growth as in FIGS (Tan et al., 2022), full leaf re-fit as in RGF.
 - ``AdditiveTreeBooster``: a long sum of optimal depth-1/2 trees with early stopping.
-- ``BudgetClassifier``: the no-tuning choice for a cut budget (FIGS or compact booster).
+- ``BudgetClassifier``: the no-tuning choice for a cut budget (the ITM).
 """
 
 from .additive import AdditiveTreeBooster

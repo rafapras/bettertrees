@@ -25,7 +25,7 @@ interpretation and editing methods.
 
 | regime | model | output |
 |---|---|---|
-| **any budget, no tuning** | **`BudgetClassifier`** | `InterleavedTreeClassifier` up to 64 cuts, `CompactTreeBooster` above |
+| **any budget, no tuning** | **`BudgetClassifier`** | `InterleavedTreeClassifier` at any budget |
 | one tree | `FastDecisionTreeClassifierCV` | a single tree; leaf count and hierarchical shrinkage chosen by CV |
 | **interpretable (4–16 cuts)** | `InterleavedTreeClassifier`, `SumOfOptimalTrees` | `logit(p) = base + Σ tree_k(x)`, a few shallow trees |
 | medium capacity (32–64 cuts) | `InterleavedTreeClassifier(learning_rate=0.3)`, `SumOfOptimalTrees` | the same sum with more trees |
@@ -58,9 +58,10 @@ The sums are **binary** (they raise on a multiclass target); wrap them in
 
 **The no-tuning rule** (`BudgetClassifier`) for a budget of `b` cuts:
 `InterleavedTreeClassifier(max_splits=b, max_delta_step=4.0)` up to 8 cuts,
-`InterleavedTreeClassifier(max_splits=b, learning_rate=0.3)` up to 64 (both with
-`lam = 2b`), and
-`CompactTreeBooster(max_splits=b)` above. `max_delta_step` caps each Newton step on a
+`InterleavedTreeClassifier(max_splits=b, learning_rate=0.3)` above 8 (both with
+`lam = 2b`). The rule was evaluated from 4 to 64 cuts; above 64 the same rule is applied
+without validation in the benchmark. `CompactTreeBooster` stays a public estimator but the
+rule no longer picks it. `max_delta_step` caps each Newton step on a
 leaf; without it, a full step on a nearly pure leaf of rare-class data can diverge.
 
 ## What is public, experimental and lab

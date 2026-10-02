@@ -368,8 +368,8 @@ class InterleavedTreeClassifier(_AdditiveTrees):
     The constructor's defaults are a full Newton step (``learning_rate=1.0``) and
     ``lam="auto"`` (2 * max_splits), with no cap on the step. The rule the benchmark
     validated for each budget is in ``BudgetClassifier``: lam = 2b; up to 8 cuts a full
-    step capped at 4 logits (``max_delta_step=4.0``); 9 to 64 cuts ``learning_rate=0.3``;
-    above 64 cuts ``CompactTreeBooster``. Use ``BudgetClassifier(b)`` to get that rule
+    step capped at 4 logits (``max_delta_step=4.0``); above 8 cuts ``learning_rate=0.3``
+    (evaluated up to 64 cuts, applied unvalidated above). Use ``BudgetClassifier(b)`` to get that rule
     instead of the plain constructor.
 
     ``FIGSClassifier`` is another name for this class.

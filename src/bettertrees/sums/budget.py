@@ -5,7 +5,6 @@ from numbers import Integral
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.utils.validation import check_is_fitted
 
-from .compact import CompactTreeBooster
 from .smalltrees import InterleavedTreeClassifier
 
 
@@ -19,8 +18,11 @@ class BudgetClassifier(ClassifierMixin, BaseEstimator):
     - up to 8 cuts: ``InterleavedTreeClassifier(max_splits=b, max_delta_step=4.0)``, full
       Newton steps capped at 4 logits (without the cap, a nearly pure leaf of
       rare-class data can diverge);
-    - 9 to 64 cuts: ``InterleavedTreeClassifier(max_splits=b, learning_rate=0.3)``;
-    - above 64: ``CompactTreeBooster(max_splits=b)``, which counts distinct cuts.
+    - above 8 cuts: ``InterleavedTreeClassifier(max_splits=b, learning_rate=0.3)``.
+
+    The rule was evaluated from 4 to 64 cuts; above 64 the same rule is applied without
+    validation in the benchmark. ``CompactTreeBooster`` is a public estimator of its own but
+    the rule no longer chooses it.
 
     The fitted model is ``model_``; its interpretation and editing methods
     (``explain``, ``rules``, ``predict_contributions``, ``prune``, ...) are
@@ -33,7 +35,7 @@ class BudgetClassifier(ClassifierMixin, BaseEstimator):
 
     Attributes
     ----------
-    model_ : InterleavedTreeClassifier or CompactTreeBooster
+    model_ : InterleavedTreeClassifier
         The fitted model the rule chose.
     classes_, n_features_in_, feature_names_in_
         As in the chosen model.
@@ -49,9 +51,7 @@ class BudgetClassifier(ClassifierMixin, BaseEstimator):
         b = int(b)
         if b <= 8:
             return InterleavedTreeClassifier(max_splits=b, max_delta_step=4.0)
-        if b <= 64:
-            return InterleavedTreeClassifier(max_splits=b, learning_rate=0.3)
-        return CompactTreeBooster(max_splits=b)
+        return InterleavedTreeClassifier(max_splits=b, learning_rate=0.3)
 
     def fit(self, X, y, sample_weight=None):
         """Fit the model the rule picks for ``max_splits``."""

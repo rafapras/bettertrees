@@ -35,8 +35,7 @@ def _expected_failures(est):
         # bootstrap replicates and the validation split both draw ROWS
         return {"check_sample_weight_equivalence_on_dense_data":
                 "row-based resampling is not invariant to repetition"}
-    if isinstance(est, AdditiveTreeBooster | BoostedOptimalTrees | CompactTreeBooster) or (
-            isinstance(est, BudgetClassifier) and est.max_splits > 64):
+    if isinstance(est, AdditiveTreeBooster | BoostedOptimalTrees | CompactTreeBooster):
         # early stopping draws 15% of the ROWS for validation: repeating a row
         # is not the same as weight 2 (the repeated row may land on both sides)
         return {"check_sample_weight_equivalence_on_dense_data":
@@ -185,7 +184,8 @@ def test_dataframe_in_sklearn_tools_raises_no_feature_name_warning(make):
     (8, FIGSClassifier, dict(max_delta_step=4.0)),
     (16, FIGSClassifier, dict(learning_rate=0.3, max_delta_step=None)),
     (64, FIGSClassifier, dict(learning_rate=0.3)),
-    (65, CompactTreeBooster, dict()),
+    (65, FIGSClassifier, dict(learning_rate=0.3)),
+    (128, FIGSClassifier, dict(learning_rate=0.3, max_delta_step=None)),
 ])
 def test_budget_classifier_applies_the_benchmark_rule_and_delegates(budget, kind, settings):
     X, y = _data()
