@@ -1,8 +1,8 @@
-"""Experimental ITM, step 3: sums of small trees plus one-parameter product terms.
+"""Research code: sums of small trees plus one-parameter product terms.
 
 The production FIGS path is untouched. Every cut and every term costs one unit.
 With no terms, growth and backfitting use the production kernels verbatim.
-Plan and decision rules: Econ Research/paper/notes/PLANO_DEGRAU3.md (v2).
+See ``docs/ITM_INTERACTIONS.md``.
 """
 
 import copy
@@ -65,11 +65,11 @@ def _key(f1, f2):
 
 
 class InteractingTreeClassifier(InterpretableSumMixin, ClassifierMixin, BaseEstimator):
-    """Sum of small trees plus product terms (experimental), binary classification.
+    """Sum of small trees plus product terms (research code), binary classification.
 
     A variant of the Interleaved Tree Model (``InterleavedTreeClassifier``) whose model
     adds terms that are products of two factors, each with one coefficient. Negative or
-    inconclusive in the benchmark so far; see ``docs/ITM_INTERACTIONS.md``.
+    inconclusive in the benchmark (the terms tie the plain sum); see ``docs/ITM_INTERACTIONS.md``.
 
     ``eta = base + sum_k T_k + sum_e gamma_e * phi_e1 * phi_e2``, where each factor is
     ``phi = (raw - center) / scale`` with center and scale (h-weighted) fixed when the

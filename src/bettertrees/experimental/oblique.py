@@ -38,8 +38,6 @@ Oblique candidates (deviations from RO-FIGS in brackets):
   axis cut). [RO-FIGS only uses oblique splits.] An oblique split consumes
   ``oblique_cost`` units of ``max_splits`` and competes with ``gain /
   oblique_cost``.
-
-Notes for the author: ``Econ Research/paper/notes/OBLIQUE_IMPL.md``.
 """
 
 from itertools import combinations

@@ -1,4 +1,4 @@
-"""G0 gates for the experimental ITM product terms (PLANO_DEGRAU3.md v2)."""
+"""Correctness gates for the ITM with product terms (``bettertrees.lab.itm``)."""
 
 import copy
 import json

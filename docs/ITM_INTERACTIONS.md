@@ -1,6 +1,9 @@
-# ITM step 3 (experimental): one-parameter product terms
+# Product terms between trees (lab): one-parameter interactions
 
-`from bettertrees.experimental import InteractingTreeClassifier`
+`from bettertrees.lab import InteractingTreeClassifier`
+
+Research code (no API or stability guarantee). In the benchmark the product terms tied the plain
+sum at the same budget, so the model stays in `bettertrees.lab`.
 
     InteractingTreeClassifier(max_splits=16, learning_rate=.3, forms=("M1", "M2", "M3", "M4", "M5"),
                               order="interleaved").fit(X, y)
@@ -29,5 +32,4 @@ Counts: `n_units_`, `n_splits_`, `n_distinct_splits_`, `conditions_read(X)`.
 Tests: `tests/test_itm.py` (no terms = FIGS bit for bit; candidate scores = dense reference for every
 form; finite differences for the tree multiplier and the coefficients; training margin; budget and
 heredity; SQL for every factor kind with NULLs; a referenced leaf can be split without changing
-predictions). Plan and results: Econ Research `paper/notes/PLANO_DEGRAU3.md`, `DEGRAU3_FASE1.md`;
-harness `bench/itm_degrau3_dev.py`.
+predictions).
