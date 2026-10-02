@@ -549,6 +549,72 @@ def small_tree_leaf_ids(Xb, feature, threshold, left, right):
     return ids
 
 
+@njit(cache=True)
+def _logistic_gh(m, y, w):
+    """(g, h) of one row; the same operations, in the same order, as ``logistic_grad_hess``."""
+    if m >= 0:
+        p = 1.0 / (1.0 + np.exp(-m))
+    else:
+        e = np.exp(m)
+        p = e / (1.0 + e)
+    return w * (p - y), w * max(p * (1.0 - p), 1e-16)
+
+
+@njit(cache=True, parallel=True)
+def node_hist_margin(Xb, y, w, margin, contrib, node_of_row, n_nodes, B):
+    """``node_hist`` of the logistic (g, h) at ``margin - contrib``, computed on the fly.
+
+    Same result, bit for bit, as ``grad_hess(y, margin - contrib, w)`` followed by
+    ``node_hist``: every cell sums its rows in increasing i. Features go in blocks
+    (parallel over blocks) and rows are read along the row-major layout of ``Xb``.
+    """
+    n, p = Xb.shape
+    out = np.zeros((n_nodes, p, B, 3))
+    BLK = 16
+    nblk = (p + BLK - 1) // BLK
+    for blk in prange(nblk):
+        j0 = blk * BLK
+        j1 = min(p, j0 + BLK)
+        for i in range(n):
+            k = node_of_row[i]
+            if k < 0:
+                continue
+            g, h = _logistic_gh(margin[i] - contrib[i], y[i], w[i])
+            for j in range(j0, j1):
+                b = Xb[i, j]
+                out[k, j, b, 0] += g
+                out[k, j, b, 1] += h
+                out[k, j, b, 2] += w[i]
+    return out
+
+
+@njit(cache=True)
+def newton_step_inplace(y, w, margin, contrib, ids, value, lam, lr, cap, has_cap):
+    """One Newton step on the leaves of a tree, from its current values (``_newton_step``).
+
+    Updates ``value``, ``contrib`` and ``margin`` in place with the same arithmetic as the
+    NumPy version: G, H per leaf in increasing i; step = -G / (H + lam), clipped to
+    [-cap, cap] if ``has_cap``; value += lr * step; margin = margin - contrib + value[ids].
+    """
+    n = len(y)
+    L = len(value)
+    G = np.zeros(L)
+    H = np.zeros(L)
+    for i in range(n):
+        g, h = _logistic_gh(margin[i], y[i], w[i])
+        G[ids[i]] += g
+        H[ids[i]] += h
+    for k in range(L):
+        s = -G[k] / (H[k] + lam)
+        if has_cap:
+            s = min(max(s, -cap), cap)
+        value[k] = value[k] + lr * s
+    for i in range(n):
+        new = value[ids[i]]
+        margin[i] = margin[i] - contrib[i] + new
+        contrib[i] = new
+
+
 @njit(cache=True, parallel=True)
 def node_hist(Xb, g, h, w, node_of_row, n_nodes, B):
     """Histogram (n_nodes, p, B, 3) of the rows grouped by node."""

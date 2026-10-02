@@ -35,7 +35,9 @@ from ._kernels import (
     best_depth3,
     hist_1d,
     newton_leaf_values,
+    newton_step_inplace,
     node_hist,
+    node_hist_margin,
     small_tree_leaf_ids,
 )
 from .edit import TreeEditMixin
@@ -174,13 +176,23 @@ class _AdditiveTrees(TreeEditMixin, InterpretableSumMixin, ClassifierMixin, Base
         self.classes_, self.bin_edges_ = classes, edges
         return X, Xb, nb, target, w
 
-    def _newton_step(self, tree, Xb, target, margin, contrib, w):
+    def _newton_step(self, tree, Xb, target, margin, contrib, w, ids=None):
         """Incremental Newton step on the leaves of ``tree``, from the current values.
 
         ``margin`` includes the tree's current contribution; returns (new
         contribution, new margin). Starting from the current values (not from
         zero) keeps backfitting stable when trees are nearly collinear.
+
+        With ``ids`` (the tree's cached leaf of each row) the step runs in one
+        compiled pass and updates ``margin`` and ``contrib`` in place; the result is
+        bit-for-bit the same as the NumPy path below.
         """
+        cap = getattr(self, "max_delta_step", None)
+        if ids is not None:
+            tree.value = np.ascontiguousarray(tree.value, dtype=np.float64)
+            newton_step_inplace(target, w, margin, contrib, ids, tree.value, self.lam_,
+                                self.learning_rate_, 0.0 if cap is None else float(cap), cap is not None)
+            return contrib, margin
         g, h = grad_hess(target, margin, w)
         ids = tree.leaf_ids(Xb)
         step = newton_leaf_values(ids, g, h, len(tree.feature), self.lam_)
@@ -194,12 +206,12 @@ class _AdditiveTrees(TreeEditMixin, InterpretableSumMixin, ClassifierMixin, Base
         new = tree.value[ids]
         return new, margin - contrib + new
 
-    def _backfit(self, trees, contribs, Xb, target, w, sweeps):
+    def _backfit(self, trees, contribs, Xb, target, w, sweeps, ids=None):
         margin = self.base_margin_ + np.sum(contribs, axis=0)
         for _ in range(sweeps):
             for k, tree in enumerate(trees):
-                contribs[k], margin = self._newton_step(tree, Xb, target, margin,
-                                                        contribs[k], w)
+                contribs[k], margin = self._newton_step(tree, Xb, target, margin, contribs[k], w,
+                                                        None if ids is None else ids[k])
         return margin
 
     def decision_function(self, X):
@@ -429,22 +441,25 @@ def grow_figs(est, Xb, nb, target, w, max_splits, max_trees=None):
     and Rashomon variants). ``est`` provides ``base_margin_``, ``lam_``,
     ``learning_rate_``, ``min_weight`` and ``backfit_sweeps``; returns the trees."""
     n, B = len(Xb), int(nb.max())
-    trees, contribs = [], []
+    trees, contribs, ids_of = [], [], []  # ids_of[k]: leaf of each row in tree k (cached)
     margin = np.full(n, est.base_margin_)
+    target = np.ascontiguousarray(target, dtype=np.float64)
+    w = np.ascontiguousarray(w, dtype=np.float64)
+    root_ids, zero = np.zeros(n, dtype=np.int64), np.zeros(n)
     for _ in range(max_splits):
         best = (0.0, None, None, None, None)  # gain, tree, node, feature, threshold
         can_add = max_trees is None or len(trees) < max_trees
         candidates = list(range(len(trees))) + ([None] if can_add else [])
         for k in candidates:
+            # g, h at the margin of the other trees, computed inside the histogram kernel
+            # (bit-for-bit grad_hess + node_hist)
             if k is None:
-                g, h = grad_hess(target, margin, w)
-                ids = np.zeros(n, dtype=np.int64)
+                ids, contrib = root_ids, zero
                 leaves, n_nodes = [0], 1
             else:
-                g, h = grad_hess(target, margin - contribs[k], w)
-                ids = trees[k].leaf_ids(Xb)
+                ids, contrib = ids_of[k], contribs[k]
                 leaves, n_nodes = trees[k].leaves, len(trees[k].feature)
-            hist = node_hist(Xb, g, h, w, ids, n_nodes, B)
+            hist = node_hist_margin(Xb, target, w, margin, contrib, ids, n_nodes, B)
             for leaf in leaves:
                 gains, cuts = best_cut_1d(hist[leaf], nb, est.lam_, est.min_weight)
                 f = int(np.argmax(gains))
@@ -456,11 +471,13 @@ def grow_figs(est, Xb, nb, target, w, max_splits, max_trees=None):
         if k is None:
             trees.append(SmallTree())
             contribs.append(np.zeros(n))
+            ids_of.append(None)
             k = len(trees) - 1
         trees[k].split(leaf, f, t)
-        contribs[k], margin = est._newton_step(trees[k], Xb, target, margin, contribs[k], w)
+        ids_of[k] = trees[k].leaf_ids(Xb)  # only the tree that received the cut changes
+        contribs[k], margin = est._newton_step(trees[k], Xb, target, margin, contribs[k], w, ids_of[k])
         if est.backfit_sweeps:
-            margin = est._backfit(trees, contribs, Xb, target, w, est.backfit_sweeps)
+            margin = est._backfit(trees, contribs, Xb, target, w, est.backfit_sweeps, ids_of)
     return trees
 
 
