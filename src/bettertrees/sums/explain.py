@@ -33,6 +33,14 @@ def feature_names_of(X):
     return names if all(isinstance(c, str) for c in names) else None
 
 
+def _sql_ident(s):
+    """A column name as a SQL identifier (quoted unless it is a plain word)."""
+    s = str(s)
+    if s.replace("_", "").isalnum() and not s[0].isdigit():
+        return s
+    return '"' + s.replace('"', '""') + '"'
+
+
 def _fmt(v, precision):
     return f"{v:.{precision}g}"
 
@@ -242,6 +250,103 @@ class InterpretableSumMixin:
         return dict(link="logit", base_margin=float(self.base_margin_),
                     classes=[c.item() if hasattr(c, "item") else c for c in self.classes_],
                     trees=[dict(rules=trees[k]) for k in sorted(trees)])
+
+    def to_sql(self, table="input", feature_names=None, precision=6, keep_columns=True):
+        """The model as one readable SQL query (additive ``CASE WHEN``, one column per tree).
+
+        Each tree becomes a column ``t{k}_{features}`` holding its logit contribution;
+        ``score = base + Σ columns`` and ``p = 1 / (1 + EXP(-score))``. Every ``WHEN``
+        is a whole leaf (the path merged into per-feature intervals), so the branches
+        read on their own, in any order. Missing values follow the model: ``x <= v``
+        includes NULL for features that had NaN in training; other features are
+        assumed non-null. Uses only ``CASE``, ``AND``, ``IS NULL`` and ``EXP``
+        (PostgreSQL, DuckDB, BigQuery, Snowflake, SQL Server, SQLite >= 3.35).
+        """
+        check_is_fitted(self, "base_margin_")
+        names = self._names(feature_names)
+        nan = getattr(self, "nan_features_", None)
+        name = (lambda j: _sql_ident(names[j])) if names is not None else (lambda j: f"x{j}")
+        num = lambda v: _fmt(v, precision)  # noqa: E731
+        # cuts: the shortest decimal that is the same float32 (the model bins in float32)
+        cut = lambda v: np.format_float_positional(np.float32(v), unique=True, trim="-")  # noqa: E731
+        trees = self._explain_trees()
+        cols, blocks = [], []
+        for k, tree in enumerate(trees, 1):
+            feats = []
+            for f, lft in zip(tree.feature, tree.left):
+                if lft != -1 and int(f) not in feats:
+                    feats.append(int(f))
+            col = f"t{k}_" + "_".join(name(f).strip('"') for f in feats) if feats else f"t{k}"
+            col = _sql_ident(col[:60])
+            leaves = []
+
+            def walk(node, path, tree=tree, leaves=leaves):
+                if tree.left[node] == -1:
+                    leaves.append((path, float(tree.value[node])))
+                    return
+                f, t = int(tree.feature[node]), int(tree.threshold[node])
+                walk(tree.left[node], [*path, (f, t, True)])
+                walk(tree.right[node], [*path, (f, t, False)])
+
+            walk(0, [])
+            if len(leaves) == 1:
+                blocks.append(f"    {num(leaves[0][1])} AS {col}")
+                cols.append(col)
+                continue
+            lines = [f"    CASE  -- tree {k}"]
+            for i, (path, v) in enumerate(leaves):
+                bounds = {}
+                for f, t, left in path:
+                    lo, hi = bounds.setdefault(f, [None, None])
+                    if left:
+                        bounds[f][1] = t if hi is None else min(hi, t)
+                    else:
+                        bounds[f][0] = t if lo is None else max(lo, t)
+                conds = []
+                for f, (lo, hi) in bounds.items():
+                    nm = name(f)
+                    nan_ok = nan is not None and bool(nan[f])
+                    if lo is None:
+                        if hi == 0:
+                            conds.append(f"{nm} IS NULL")
+                            continue
+                        c = f"{nm} <= {cut(bin_threshold(self.bin_edges_[f], hi))}"
+                        conds.append(f"({c} OR {nm} IS NULL)" if nan_ok else c)
+                    elif hi is None:
+                        conds.append(f"{nm} IS NOT NULL" if lo == 0 else
+                                     f"{nm} > {cut(bin_threshold(self.bin_edges_[f], lo))}")
+                    else:
+                        if lo != 0:
+                            conds.append(f"{nm} > {cut(bin_threshold(self.bin_edges_[f], lo))}")
+                        else:
+                            conds.append(f"{nm} IS NOT NULL")
+                        conds.append(f"{nm} <= {cut(bin_threshold(self.bin_edges_[f], hi))}")
+                if i == len(leaves) - 1:
+                    lines.append(f"      ELSE {num(v)}")
+                else:
+                    lines.append(f"      WHEN {' AND '.join(conds)} THEN {num(v)}")
+            lines.append(f"    END AS {col}")
+            blocks.append("\n".join(lines))
+            cols.append(col)
+        n_cuts = sum(t.n_splits for t in trees)
+        head = (f"-- logit P(y = {self.classes_[1]}) = base + sum of {len(trees)} tree columns "
+                f"({n_cuts} cuts); p = 1 / (1 + EXP(-score))")
+        keep = "*, " if keep_columns else ""
+        return "\n".join([
+            head,
+            "WITH contributions AS (",
+            f"  SELECT {keep}".rstrip(),
+            ",\n".join(blocks),
+            f"  FROM {table}",
+            "), scored AS (",
+            f"  SELECT *, {num(float(self.base_margin_))}  -- base",
+            *[f"    + {c}" for c in cols],
+            "    AS score",
+            "  FROM contributions",
+            ")",
+            "SELECT *, 1.0 / (1.0 + EXP(-score)) AS p",
+            "FROM scored;",
+        ])
 
     def explain(self, feature_names=None, precision=4):
         """Text scorecard: add the base and the leaf value of every tree."""
