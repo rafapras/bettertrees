@@ -18,12 +18,14 @@ from .distill import (
     soft_label_expand,
 )
 from .interactions import all_pairs, fast_pair_scores, teacher_path_pairs
+from .itm import InteractingFIGSClassifier
 from .oblique import ObliqueFIGSClassifier
 from .precision import PrecisionTreeClassifier
 from .ratios import RatioVocabulary, pair_shape_scores, top_pairs
 from .rulefit import RuleFitLasso
 
 __all__ = [
+    "InteractingFIGSClassifier",
     "MixedDepthTree",
     "ObliqueFIGSClassifier",
     "PrecisionTreeClassifier",
