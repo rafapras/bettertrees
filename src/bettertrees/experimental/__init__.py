@@ -5,6 +5,7 @@
 - Pair screening (``fast_pair_scores``, ``teacher_path_pairs``).
 - ``RuleFitLasso``: L1 logistic regression over rules from an additive booster.
 - ``PrecisionTreeClassifier``: a single tree whose cuts maximize one class's precision.
+- ``ObliqueFIGSClassifier``: FIGS whose cuts may be oblique (RO-FIGS-like).
 - ``fit_multilevel_tree``: a single tree grown from locally Gini-optimal depth-2 blocks.
 """
 
@@ -17,12 +18,14 @@ from .distill import (
     soft_label_expand,
 )
 from .interactions import all_pairs, fast_pair_scores, teacher_path_pairs
+from .oblique import ObliqueFIGSClassifier
 from .precision import PrecisionTreeClassifier
 from .ratios import RatioVocabulary, pair_shape_scores, top_pairs
 from .rulefit import RuleFitLasso
 
 __all__ = [
     "MixedDepthTree",
+    "ObliqueFIGSClassifier",
     "PrecisionTreeClassifier",
     "RatioVocabulary",
     "RuleFitLasso",
