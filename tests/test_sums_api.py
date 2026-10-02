@@ -8,17 +8,16 @@ import pandas as pd
 import pytest
 from sklearn.utils.estimator_checks import parametrize_with_checks
 
+from bettertrees.lab import BaggedFIGSClassifier, RashomonFIGSClassifier
 from bettertrees.sums import (
     AdditiveTreeBooster,
-    BaggedFIGSClassifier,
-    BoostedOptimalTrees,
     BudgetClassifier,
     CompactTreeBooster,
     FIGSClassifier,
     LightGBMRefitClassifier,
-    RashomonFIGSClassifier,
     SumOfOptimalTrees,
 )
+from bettertrees.sums.smalltrees import BoostedOptimalTrees
 
 matplotlib.use("Agg")
 

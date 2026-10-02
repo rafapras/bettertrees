@@ -266,9 +266,9 @@ class InterpretableSumMixin:
         names = self._names(feature_names)
         nan = getattr(self, "nan_features_", None)
         name = (lambda j: _sql_ident(names[j])) if names is not None else (lambda j: f"x{j}")
-        num = lambda v: _fmt(v, precision)  # noqa: E731
+        num = lambda v: _fmt(v, precision)
         # cuts: the shortest decimal that is the same float32 (the model bins in float32)
-        cut = lambda v: np.format_float_positional(np.float32(v), unique=True, trim="-")  # noqa: E731
+        cut = lambda v: np.format_float_positional(np.float32(v), unique=True, trim="-")
         trees = self._explain_trees()
         cols, blocks = [], []
         for k, tree in enumerate(trees, 1):

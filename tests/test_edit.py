@@ -8,12 +8,11 @@ from sklearn.metrics import log_loss
 
 from bettertrees import (
     AdditiveTreeBooster,
-    BaggedFIGSClassifier,
     CompactTreeBooster,
     FIGSClassifier,
-    RashomonFIGSClassifier,
     SumOfOptimalTrees,
 )
+from bettertrees.lab import BaggedFIGSClassifier, RashomonFIGSClassifier
 
 MODELS = [
     lambda: FIGSClassifier(max_splits=10),

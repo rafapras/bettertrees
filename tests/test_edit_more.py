@@ -4,7 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from bettertrees import CompactTreeBooster, FIGSClassifier, RashomonFIGSClassifier
+from bettertrees import CompactTreeBooster, FIGSClassifier
+from bettertrees.lab import RashomonFIGSClassifier
 
 
 def _data(seed=0, n=3000):

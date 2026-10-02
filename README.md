@@ -63,9 +63,23 @@ The sums are **binary** (they raise on a multiclass target); wrap them in
 `CompactTreeBooster(max_splits=b)` above. `max_delta_step` caps each Newton step on a
 leaf; without it, a full step on a nearly pure leaf of rare-class data can diverge.
 
-Experimental pieces (no API guarantee) live in `bettertrees.experimental`: a tree that
-maximizes one class's precision (`PrecisionTreeClassifier`), trees grown from optimal
-depth-2 blocks (`fit_multilevel_tree`), ratio features, distillation and RuleFit.
+## What is public, experimental and lab
+
+- **Public** (`import bettertrees`): `BudgetClassifier`, `InterleavedTreeClassifier`
+  (alias `FIGSClassifier`), `SumOfOptimalTrees`, `AdditiveTreeBooster`,
+  `CompactTreeBooster`, `LightGBMRefitClassifier` / `from_lightgbm`,
+  `FastDecisionTreeClassifier` and `FastDecisionTreeClassifierCV`.
+- **`bettertrees.experimental`** (no API guarantee): `ObliqueFIGSClassifier`, the ITM with
+  cuts on pairs of features, which gained with 8 cuts in the benchmark, and
+  `PrecisionTreeClassifier`, a tree whose cuts maximize one class's precision.
+- **`bettertrees.lab`** (research code from the benchmark: negative or inconclusive
+  results; no API or stability guarantee; not part of the public API): distillation from a
+  teacher, pair and ratio features, RuleFit, the ITM with product terms
+  (`InteractingTreeClassifier`), bagged and Rashomon structure selection
+  (`BaggedFIGSClassifier`, `RashomonFIGSClassifier`) and the multilevel tree
+  (`fit_multilevel_tree`). Kept so the results can be reproduced. The old import paths
+  (`bettertrees.experimental.distill`, `bettertrees.sums.robust`, `bettertrees.multilevel`,
+  ...) still work for the benchmark.
 
 ## Examples
 
@@ -137,7 +151,7 @@ A LightGBM model becomes an editable sum with `from_lightgbm(lgbm, X, y)` (exact
 predictions); `LightGBMRefitClassifier` also refits its leaves jointly, which beats the
 same LightGBM at 4-64 cuts in our benchmark.
 
-`RashomonFIGSClassifier` runs a local search that mutates one cut at a time and keeps
+`RashomonFIGSClassifier` (in `bettertrees.lab`) runs a local search that mutates one cut at a time and keeps
 every structure it visits within `epsilon` of the best validation loss. That is a
 **sample** of the Rashomon set (the structures the search reached), not the whole set:
 `rashomon_models()` returns them as estimators and `rashomon_importance(X)` the range of
@@ -163,6 +177,9 @@ The single tree (`FastDecisionTreeClassifier` and its CV version) has
 `export_text()`, with the leaf probabilities `predict_proba` returns.
 
 ## Benchmark summary
+
+> Numbers to be updated from the paper: the table below comes from earlier runs, before the
+> Interleaved Tree Model was named, and will be replaced by the paper's results.
 
 Binary classification, OpenML/TabArena suites plus four Kaggle sets; 28 bases with
 10k–100k rows (splits not used in development) and 28 with more than 100k (one

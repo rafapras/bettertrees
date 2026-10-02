@@ -3,8 +3,9 @@
 import numpy as np
 import pytest
 
-from bettertrees.sums import BaggedFIGSClassifier, FIGSClassifier, RashomonFIGSClassifier
-from bettertrees.sums.robust import _coarsen, _cuts, _uncoarsen
+from bettertrees.lab import BaggedFIGSClassifier, RashomonFIGSClassifier
+from bettertrees.lab.robust import _coarsen, _cuts, _uncoarsen
+from bettertrees.sums import FIGSClassifier
 from bettertrees.sums.smalltrees import SmallTree
 
 

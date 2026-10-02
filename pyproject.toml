@@ -51,6 +51,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/_core.py" = ["F401", "E402"]  # test facade: re-exports internals
+"src/bettertrees/lab/itm.py" = ["E501", "RUF059"]  # research code: long formulas
 "tests/*" = ["E501", "E741", "B018", "RUF007", "RUF015", "RUF059"]  # test style: short names, attribute-access asserts
 
 [tool.ruff.lint.isort]

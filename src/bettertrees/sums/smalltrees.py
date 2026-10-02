@@ -38,7 +38,6 @@ from ._kernels import (
     hist_1d,
     newton_leaf_values,
     newton_step_inplace,
-    node_hist,
     node_hist_margin,
     small_tree_leaf_ids,
 )
@@ -193,7 +192,8 @@ class _AdditiveTrees(TreeEditMixin, InterpretableSumMixin, ClassifierMixin, Base
         if ids is not None:
             tree.value = np.ascontiguousarray(tree.value, dtype=np.float64)
             newton_step_inplace(target, w, margin, contrib, ids, tree.value, self.lam_,
-                                self.learning_rate_, 0.0 if cap is None else float(cap), cap is not None)
+                                self.learning_rate_, 0.0 if cap is None else float(cap),
+                                cap is not None)
             return contrib, margin
         g, h = grad_hess(target, margin, w)
         ids = tree.leaf_ids(Xb)
@@ -496,7 +496,8 @@ def grow_figs(est, Xb, nb, target, w, max_splits, max_trees=None):
             k = len(trees) - 1
         trees[k].split(leaf, f, t)
         ids_of[k] = trees[k].leaf_ids(Xb)  # only the tree that received the cut changes
-        contribs[k], margin = est._newton_step(trees[k], Xb, target, margin, contribs[k], w, ids_of[k])
+        contribs[k], margin = est._newton_step(trees[k], Xb, target, margin, contribs[k], w,
+                                               ids_of[k])
         if est.backfit_sweeps:
             margin = est._backfit(trees, contribs, Xb, target, w, est.backfit_sweeps, ids_of)
     return trees

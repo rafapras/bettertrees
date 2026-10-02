@@ -6,7 +6,8 @@ import numpy as np
 import pytest
 from tree_invariants import check_conservation, check_multilevel_blocks, check_structure
 
-from bettertrees import FastDecisionTreeClassifier, fit_multilevel_tree
+from bettertrees import FastDecisionTreeClassifier
+from bettertrees.lab import fit_multilevel_tree
 
 
 def _risk(y, weight):

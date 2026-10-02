@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from bettertrees import FastDecisionTreeClassifier
-from bettertrees.experimental import (
+from bettertrees.lab import (
     MixedDepthTree,
     RatioVocabulary,
     crossfit_teacher,
@@ -256,7 +256,7 @@ def test_screen_without_bootstrap_returns_gain_only():
 
 # ------------------------------------------------------------ small trees
 
-from bettertrees.experimental import RuleFitLasso  # noqa: E402
+from bettertrees.lab import RuleFitLasso  # noqa: E402
 from bettertrees.sums import FIGSClassifier, SumOfOptimalTrees  # noqa: E402
 from bettertrees.sums._kernels import best_depth3  # noqa: E402
 
@@ -415,7 +415,7 @@ def test_rulefit_path_selects_like_liblinear_and_is_faster():
 
 
 def test_boosted_optimal_d2_reproduces_additive_booster():
-    from bettertrees.sums import BoostedOptimalTrees
+    from bettertrees.sums.smalltrees import BoostedOptimalTrees
     X, y = _additive_interaction(31, n=3000)
     a = AdditiveTreeBooster(depth=2, learning_rate=0.2, max_rounds=40, patience=10,
                             random_state=3).fit(X, y)
@@ -426,7 +426,7 @@ def test_boosted_optimal_d2_reproduces_additive_booster():
 
 
 def test_boosted_optimal_d3_captures_three_way_interaction():
-    from bettertrees.sums import BoostedOptimalTrees
+    from bettertrees.sums.smalltrees import BoostedOptimalTrees
     rng = np.random.default_rng(32)
     n = 5000
     X = rng.normal(size=(n, 5))

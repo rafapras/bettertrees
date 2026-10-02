@@ -4,7 +4,7 @@ import numpy as np
 
 import bettertrees
 from bettertrees import BudgetClassifier, FIGSClassifier, InterleavedTreeClassifier
-from bettertrees.experimental import InteractingFIGSClassifier, InteractingTreeClassifier
+from bettertrees.lab import InteractingFIGSClassifier, InteractingTreeClassifier
 
 
 def test_figs_is_the_same_class():

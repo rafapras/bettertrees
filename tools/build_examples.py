@@ -245,9 +245,10 @@ pd.DataFrame(model.cut_alternatives(X_val, y_val, tree=0, node=0, epsilon=0.01))
 
 `RashomonFIGSClassifier` mutates cuts and keeps every structure within `epsilon` of the
 best validation loss. `rashomon_importance` gives the range of each feature's importance
-across those equally good models."""),
+across those equally good models. It is research code (`bettertrees.lab`: no API
+guarantee)."""),
     new_code_cell("""\
-from bettertrees import RashomonFIGSClassifier
+from bettertrees.lab import RashomonFIGSClassifier
 
 rash = RashomonFIGSClassifier(max_splits=16, n_mutations=60, random_state=0).fit(X_train, y_train)
 print(len(rash.rashomon_models()), "models within epsilon of the best validation loss")

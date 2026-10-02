@@ -1,45 +1,35 @@
 """Experimental pieces: no API stability guarantee.
 
-- ``RatioVocabulary``: adds x_i / x_j columns whose pair has a "ratio shape".
-- Distillation from a teacher (``crossfit_teacher``, ``fit_tree_on_target``, ...).
-- Pair screening (``fast_pair_scores``, ``teacher_path_pairs``).
-- ``RuleFitLasso``: L1 logistic regression over rules from an additive booster.
 - ``PrecisionTreeClassifier``: a single tree whose cuts maximize one class's precision.
-- ``ObliqueFIGSClassifier``: FIGS whose cuts may be oblique (RO-FIGS-like).
-- ``fit_multilevel_tree``: a single tree grown from locally Gini-optimal depth-2 blocks.
+- ``ObliqueFIGSClassifier``: the Interleaved Tree Model whose cuts may be oblique, on
+  pairs of features (RO-FIGS-like); a real gain with 8 cuts.
+
+The modules with negative or inconclusive results (distillation, pair and ratio
+features, RuleFit, the product-term variant, the multilevel tree) are in
+``bettertrees.lab``; their old names under ``bettertrees.experimental`` still import,
+for the benchmark.
 """
 
-from ..multilevel import fit_multilevel_tree
-from .distill import (
-    MixedDepthTree,
-    crossfit_teacher,
-    fit_tree_on_target,
-    restate_leaf_masses,
-    soft_label_expand,
-)
-from .interactions import all_pairs, fast_pair_scores, teacher_path_pairs
-from .itm import InteractingFIGSClassifier, InteractingTreeClassifier
 from .oblique import ObliqueFIGSClassifier
 from .precision import PrecisionTreeClassifier
-from .ratios import RatioVocabulary, pair_shape_scores, top_pairs
-from .rulefit import RuleFitLasso
 
-__all__ = [
-    "InteractingFIGSClassifier",
-    "InteractingTreeClassifier",
-    "MixedDepthTree",
-    "ObliqueFIGSClassifier",
-    "PrecisionTreeClassifier",
-    "RatioVocabulary",
-    "RuleFitLasso",
-    "all_pairs",
-    "crossfit_teacher",
-    "fast_pair_scores",
-    "fit_multilevel_tree",
-    "fit_tree_on_target",
-    "pair_shape_scores",
-    "restate_leaf_masses",
-    "soft_label_expand",
-    "teacher_path_pairs",
-    "top_pairs",
-]
+__all__ = ["ObliqueFIGSClassifier", "PrecisionTreeClassifier"]
+
+# names that moved to bettertrees.lab, resolved on first use (kept for the benchmark)
+_MOVED = {
+    "MixedDepthTree": "distill", "crossfit_teacher": "distill", "fit_tree_on_target": "distill",
+    "restate_leaf_masses": "distill", "soft_label_expand": "distill",
+    "all_pairs": "interactions", "fast_pair_scores": "interactions",
+    "teacher_path_pairs": "interactions",
+    "InteractingFIGSClassifier": "itm", "InteractingTreeClassifier": "itm",
+    "RatioVocabulary": "ratios", "pair_shape_scores": "ratios", "top_pairs": "ratios",
+    "RuleFitLasso": "rulefit", "fit_multilevel_tree": "multilevel",
+}
+
+
+def __getattr__(name):
+    if name in _MOVED:
+        from importlib import import_module
+
+        return getattr(import_module(f"..lab.{_MOVED[name]}", __name__), name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

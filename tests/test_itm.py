@@ -9,9 +9,9 @@ import pytest
 from sklearn.base import clone
 
 from bettertrees import FIGSClassifier
-from bettertrees.experimental import InteractingTreeClassifier
-from bettertrees.experimental._itm_kernels import affine_grad_hess, joint_system
-from bettertrees.experimental.itm import CUT, NODE, TREE, _subtree_leaves
+from bettertrees.lab import InteractingTreeClassifier
+from bettertrees.lab._itm_kernels import affine_grad_hess, joint_system
+from bettertrees.lab.itm import CUT, NODE, TREE, _subtree_leaves
 from bettertrees.sums._common import grad_hess
 from bettertrees.sums.smalltrees import SmallTree
 

@@ -9,8 +9,6 @@
   trees; each step adds the best cut of any tree (or a new root) by Newton gain and
   re-fits all leaves. Growth from FIGS (Tan et al., 2022), re-fit from RGF.
   ``FIGSClassifier`` is the same class under its older name.
-- ``BaggedFIGSClassifier``, ``RashomonFIGSClassifier``: FIGS with a bagged or
-  Rashomon structure selection (medium budgets).
 - ``CompactTreeBooster``: shrunken boosting of optimal trees counted in distinct
   cuts (identical trees merged); the no-tuning choice above 64 cuts.
 - ``AdditiveTreeBooster``: a long sum of optimal depth-1/2 trees with early stopping.
@@ -20,30 +18,40 @@
 The sums (binary classification) expose ``rules()``, ``explain()``, ``to_dict()``,
 ``predict_contributions()``, ``plot_shapes()``, ``plot_contributions()`` and the
 editing API; the single tree is multiclass and has ``export_text()``.
-``bettertrees.experimental`` has no API stability guarantee.
+``bettertrees.experimental`` has no API stability guarantee; ``bettertrees.lab`` holds
+research code with negative or inconclusive results (no API, no stability, not public).
 """
 
 from .autotune import FastDecisionTreeClassifierCV
 from .estimator import FastDecisionTreeClassifier
-
-# kept importable from the top for existing code; it lives in bettertrees.experimental
-from .multilevel import fit_multilevel_tree  # noqa: F401
 from .sums import (
     AdditiveTreeBooster,
-    BaggedFIGSClassifier,
     BudgetClassifier,
     CompactTreeBooster,
     FIGSClassifier,
     InterleavedTreeClassifier,
     LightGBMRefitClassifier,
-    RashomonFIGSClassifier,
     SumOfOptimalTrees,
     from_lightgbm,
 )
 
 __version__ = "0.1.0.dev0"
 
-__all__ = ["AdditiveTreeBooster", "BaggedFIGSClassifier", "BudgetClassifier",
+__all__ = ["AdditiveTreeBooster", "BudgetClassifier",
            "CompactTreeBooster", "FIGSClassifier", "FastDecisionTreeClassifier",
-           "FastDecisionTreeClassifierCV", "InterleavedTreeClassifier", "LightGBMRefitClassifier", "RashomonFIGSClassifier",
+           "FastDecisionTreeClassifierCV", "InterleavedTreeClassifier", "LightGBMRefitClassifier",
            "SumOfOptimalTrees", "__version__", "from_lightgbm"]
+
+
+# moved to bettertrees.lab; still importable from here, resolved on first use (kept for
+# the benchmark)
+_MOVED = {"BaggedFIGSClassifier": "robust", "RashomonFIGSClassifier": "robust",
+          "fit_multilevel_tree": "multilevel"}
+
+
+def __getattr__(name):
+    if name in _MOVED:
+        from importlib import import_module
+
+        return getattr(import_module(f".lab.{_MOVED[name]}", __name__), name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

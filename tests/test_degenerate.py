@@ -4,13 +4,8 @@ probabilities (or fail with a clear error), never crash deep inside a kernel."""
 import numpy as np
 import pytest
 
-from bettertrees import (
-    BaggedFIGSClassifier,
-    CompactTreeBooster,
-    FIGSClassifier,
-    RashomonFIGSClassifier,
-    SumOfOptimalTrees,
-)
+from bettertrees import CompactTreeBooster, FIGSClassifier, SumOfOptimalTrees
+from bettertrees.lab import BaggedFIGSClassifier, RashomonFIGSClassifier
 
 MAKERS = {
     "figs": lambda b: FIGSClassifier(max_splits=b),
