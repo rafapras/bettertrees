@@ -19,6 +19,7 @@ from ..sums._common import (
     grad_hess,
     predict_input,
     rebin,
+    subtree_leaves,
 )
 from ..sums._kernels import best_cut_1d, node_hist, node_hist_margin
 from ..sums.explain import InterpretableSumMixin
@@ -41,14 +42,8 @@ ORDERS = ("interleaved", "two_stage")
 
 
 def _subtree_leaves(tree, node):
-    out, stack = [], [node]
-    while stack:
-        k = stack.pop()
-        if tree.left[k] == -1:
-            out.append(k)
-        else:
-            stack += [tree.left[k], tree.right[k]]
-    return np.asarray(out, dtype=np.int64)
+    # the same walk as sums._common.subtree_leaves, as an int64 array
+    return np.asarray(subtree_leaves(tree, node), dtype=np.int64)
 
 
 def _path(tree, node):

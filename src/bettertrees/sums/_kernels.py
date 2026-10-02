@@ -24,7 +24,17 @@ from numba import njit, prange
 
 @njit(cache=True)
 def logistic_grad_hess(y, margin, w):
-    """Gradient and Hessian of the log-loss with target y in [0, 1] (soft targets allowed)."""
+    """Gradient and Hessian of the log-loss with target y in [0, 1] (soft targets allowed).
+
+    The logistic (g, h) is written four times in compiled code. They were left as they are
+    (not merged) because the benchmark's results depend on the bits and merging would touch
+    compiled code. They are:
+    this function (whole vector, used by ``grad_hess``); ``_logistic_gh`` below (one row,
+    inside ``node_hist_margin`` and ``newton_step_inplace``, the same operations in the
+    same order); ``_gh`` in ``bettertrees.lab._itm_kernels`` (one row, same operations);
+    and the inline IRLS weights of ``l1_logistic_path`` (Hessian floor 1e-5, not 1e-16,
+    because it is a different algorithm). The first three must stay bit-identical.
+    """
     n = len(y)
     g = np.empty(n)
     h = np.empty(n)
@@ -247,91 +257,6 @@ def combination_scores(X, g, h, w, pairs, kind, n_bins, lam, min_weight):
         elif t == 0:
             thresholds[q] = -np.inf  # only "ineligible vs the rest"
     return gains, thresholds, valid_frac
-
-
-@njit(cache=True, parallel=True)
-def best_depth2_reference(Xb, g, h, w, nb, lam, min_weight):
-    """Optimal depth-2 Newton tree by exhaustive search over the bins.
-
-    For each root (f1, t1), each child takes its best single cut (or stays a
-    leaf if none gains). Returns, per f1, (gain, t1, fL, tL, fR, tR); the caller
-    picks the f1 with the largest gain (ties: smallest f1). O(n p^2) passes over
-    the data and O(p * B^2 * p) search.
-    """
-    n, p = Xb.shape
-    B = 0
-    for j in range(p):
-        if nb[j] > B:
-            B = nb[j]
-    res_gain = np.zeros(p)
-    res = np.full((p, 5), -1, dtype=np.int64)
-    Gt = 0.0
-    Ht = 0.0
-    for i in range(n):
-        Gt += g[i]
-        Ht += h[i]
-    parent = _score(Gt, Ht, lam)
-    for f1 in prange(p):
-        n1 = nb[f1]
-        hist = np.zeros((n1, p, B, 3))
-        for i in range(n):
-            b1 = Xb[i, f1]
-            for f2 in range(p):
-                b2 = Xb[i, f2]
-                hist[b1, f2, b2, 0] += g[i]
-                hist[b1, f2, b2, 1] += h[i]
-                hist[b1, f2, b2, 2] += w[i]
-        total = np.zeros((p, B, 3))
-        for b1 in range(n1):
-            total += hist[b1]
-        left = np.zeros((p, B, 3))
-        right = np.empty((p, B, 3))
-        best = 0.0
-        for t1 in range(n1 - 1):
-            left += hist[t1]
-            GL = 0.0
-            HL = 0.0
-            WL = 0.0
-            for b2 in range(nb[0]):
-                GL += left[0, b2, 0]
-                HL += left[0, b2, 1]
-                WL += left[0, b2, 2]
-            GR = Gt - GL
-            HR = Ht - HL
-            WR = 0.0
-            for b2 in range(nb[0]):
-                WR += total[0, b2, 2] - left[0, b2, 2]
-            if min_weight > WL or min_weight > WR:
-                continue
-            right[:] = total - left
-            root_gain = _score(GL, HL, lam) + _score(GR, HR, lam) - parent
-            bl = 0.0
-            fl = -1
-            tl = -1
-            br = 0.0
-            fr = -1
-            tr = -1
-            for f2 in range(p):
-                gl, cl = _best_cut_hist(left[f2], nb[f2], lam, min_weight)
-                if gl > bl:
-                    bl = gl
-                    fl = f2
-                    tl = cl
-                gr, cr = _best_cut_hist(right[f2], nb[f2], lam, min_weight)
-                if gr > br:
-                    br = gr
-                    fr = f2
-                    tr = cr
-            gain = root_gain + bl + br
-            if gain > best:
-                best = gain
-                res[f1, 0] = t1
-                res[f1, 1] = fl
-                res[f1, 2] = tl
-                res[f1, 3] = fr
-                res[f1, 4] = tr
-        res_gain[f1] = best
-    return res_gain, res
 
 
 @njit(cache=True)
@@ -634,7 +559,8 @@ def node_hist(Xb, g, h, w, node_of_row, n_nodes, B):
 
 @njit(cache=True, parallel=True)
 def best_depth2(Xb, g, h, w, nb, lam, min_weight):
-    """Optimal depth-2 tree; BIT-FOR-BIT the same result as ``best_depth2_reference``.
+    """Optimal depth-2 tree; BIT-FOR-BIT the same result as ``best_depth2_reference``
+    (the slower first version, kept in ``tests/_reference.py``).
 
     Swaps the loop order: for each root f1, one pair (f1, f2) at a time with a
     (nb[f1], B, 3) histogram that fits in cache, over column-major X. Each cell

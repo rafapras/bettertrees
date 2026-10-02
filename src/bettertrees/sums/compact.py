@@ -17,24 +17,20 @@ plain sum of trees: step functions per feature plus a few interaction trees.
 
 import numpy as np
 
-from ._common import base_margin, binned, fit_inputs, grad_hess, teacher_top_features
+from ._common import (
+    base_margin,
+    binned,
+    fit_inputs,
+    grad_hess,
+    log_loss_margin,
+    subtree_leaves,
+    teacher_top_features,
+)
 from ._kernels import best_cut_1d, newton_leaf_values, node_hist, reuse_gains
-from .additive import _log_loss
 from .edit import _key, _reachable
 from .smalltrees import SmallTree, _AdditiveTrees, optimal_tree
 
 _SLOTS = 32  # leaf-id width of the reuse kernel: trees of at most 31 nodes (15 cuts)
-
-
-def _subtree_leaves(tree, node):
-    stack, out = [node], []
-    while stack:
-        k = stack.pop()
-        if tree.left[k] == -1:
-            out.append(k)
-        else:
-            stack += [tree.left[k], tree.right[k]]
-    return out
 
 
 def _refines(big, small):
@@ -54,7 +50,7 @@ def _n_cuts(key):
 def _absorb(host, node, small, snode):
     """Add the leaf values of ``small`` (a coarsening of ``host``) to ``host``'s leaves."""
     if small.left[snode] == -1:
-        for leaf in _subtree_leaves(host, node):
+        for leaf in subtree_leaves(host, node):
             host.value[leaf] += small.value[snode]
         return
     _absorb(host, host.left[node], small, small.left[snode])
@@ -384,9 +380,9 @@ class CompactTreeBooster(_AdditiveTrees):
             rounds.append((key, step))
             if val.any():
                 m_val += values[tree.leaf_ids(Xv)]
-                loss = _log_loss(yv, m_val, wv)
+                loss = log_loss_margin(yv, m_val, wv)
             else:
-                loss = _log_loss(yt, m_tr, wt)
+                loss = log_loss_margin(yt, m_tr, wt)
             history.append(loss)
             if loss < best - 1e-12:
                 best, best_round = loss, len(rounds)

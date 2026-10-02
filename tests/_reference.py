@@ -4,6 +4,7 @@ No production path imports this module.
 """
 
 import numpy as np
+from numba import njit, prange
 
 from bettertrees._data import Split
 from bettertrees.kernels import (
@@ -12,6 +13,7 @@ from bettertrees.kernels import (
     precision_split_gain,
     remaining_gain_upper_bound,
 )
+from bettertrees.sums._kernels import _best_cut_hist, _score
 
 
 def _scan_histogram_feature_reference(mass, count, edges, parent_mass, *, min_samples_leaf,
@@ -316,3 +318,88 @@ def _find_best_split_exact_precision_reference(
         stats["exact_candidates_evaluated"] = (
             stats.get("exact_candidates_evaluated", 0) + evaluated)
     return best
+
+
+@njit(cache=True, parallel=True)
+def best_depth2_reference(Xb, g, h, w, nb, lam, min_weight):
+    """Optimal depth-2 Newton tree by exhaustive search over the bins.
+
+    For each root (f1, t1), each child takes its best single cut (or stays a
+    leaf if none gains). Returns, per f1, (gain, t1, fL, tL, fR, tR); the caller
+    picks the f1 with the largest gain (ties: smallest f1). O(n p^2) passes over
+    the data and O(p * B^2 * p) search.
+    """
+    n, p = Xb.shape
+    B = 0
+    for j in range(p):
+        if nb[j] > B:
+            B = nb[j]
+    res_gain = np.zeros(p)
+    res = np.full((p, 5), -1, dtype=np.int64)
+    Gt = 0.0
+    Ht = 0.0
+    for i in range(n):
+        Gt += g[i]
+        Ht += h[i]
+    parent = _score(Gt, Ht, lam)
+    for f1 in prange(p):
+        n1 = nb[f1]
+        hist = np.zeros((n1, p, B, 3))
+        for i in range(n):
+            b1 = Xb[i, f1]
+            for f2 in range(p):
+                b2 = Xb[i, f2]
+                hist[b1, f2, b2, 0] += g[i]
+                hist[b1, f2, b2, 1] += h[i]
+                hist[b1, f2, b2, 2] += w[i]
+        total = np.zeros((p, B, 3))
+        for b1 in range(n1):
+            total += hist[b1]
+        left = np.zeros((p, B, 3))
+        right = np.empty((p, B, 3))
+        best = 0.0
+        for t1 in range(n1 - 1):
+            left += hist[t1]
+            GL = 0.0
+            HL = 0.0
+            WL = 0.0
+            for b2 in range(nb[0]):
+                GL += left[0, b2, 0]
+                HL += left[0, b2, 1]
+                WL += left[0, b2, 2]
+            GR = Gt - GL
+            HR = Ht - HL
+            WR = 0.0
+            for b2 in range(nb[0]):
+                WR += total[0, b2, 2] - left[0, b2, 2]
+            if min_weight > WL or min_weight > WR:
+                continue
+            right[:] = total - left
+            root_gain = _score(GL, HL, lam) + _score(GR, HR, lam) - parent
+            bl = 0.0
+            fl = -1
+            tl = -1
+            br = 0.0
+            fr = -1
+            tr = -1
+            for f2 in range(p):
+                gl, cl = _best_cut_hist(left[f2], nb[f2], lam, min_weight)
+                if gl > bl:
+                    bl = gl
+                    fl = f2
+                    tl = cl
+                gr, cr = _best_cut_hist(right[f2], nb[f2], lam, min_weight)
+                if gr > br:
+                    br = gr
+                    fr = f2
+                    tr = cr
+            gain = root_gain + bl + br
+            if gain > best:
+                best = gain
+                res[f1, 0] = t1
+                res[f1, 1] = fl
+                res[f1, 2] = tl
+                res[f1, 3] = fr
+                res[f1, 4] = tr
+        res_gain[f1] = best
+    return res_gain, res

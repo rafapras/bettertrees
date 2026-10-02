@@ -23,7 +23,7 @@ read the same ``trees_``.
 import numpy as np
 from sklearn.utils.validation import check_is_fitted
 
-from ._common import as_weights, grad_hess, rebin, sigmoid
+from ._common import as_weights, grad_hess, log_loss_margin, rebin, subtree_leaves
 from ._kernels import best_cut_1d, hist_1d, newton_leaf_values
 
 
@@ -84,17 +84,6 @@ def _compatible(a, b, skip):
     return True
 
 
-def _subtree_leaves(tree, node):
-    stack, out = [node], []
-    while stack:
-        k = stack.pop()
-        if tree.left[k] == -1:
-            out.append(k)
-        else:
-            stack += [tree.left[k], tree.right[k]]
-    return out
-
-
 def _monotone_pairs(tree, feature):
     """(low leaf, high leaf) pairs that must be ordered for monotonicity in
     ``feature``: for every cut on ``feature``, a leaf of its left subtree and a
@@ -103,8 +92,8 @@ def _monotone_pairs(tree, feature):
     pairs = []
     for k in range(len(tree.feature)):
         if tree.left[k] != -1 and int(tree.feature[k]) == feature:
-            for a in _subtree_leaves(tree, tree.left[k]):
-                for b in _subtree_leaves(tree, tree.right[k]):
+            for a in subtree_leaves(tree, tree.left[k]):
+                for b in subtree_leaves(tree, tree.right[k]):
                     if _compatible(boxes[a], boxes[b], feature):
                         pairs.append((a, b))
     return pairs
@@ -133,11 +122,6 @@ def _project_monotone(tree, constraints, weights=None, max_passes=500):
         wts[a] = wts[b] = wts[a] + wts[b]
     tree.value = v
     return tree
-
-
-def _log_loss(y, margin, w):
-    p = np.clip(sigmoid(margin), 1e-15, 1 - 1e-15)
-    return float(-np.sum(w * (y * np.log(p) + (1 - y) * np.log(1 - p))) / w.sum())
 
 
 class TreeEditMixin:
@@ -419,7 +403,7 @@ class TreeEditMixin:
             margin = m._refit_binned(Xb, target, w, lam, sweeps)
             real = float(self.bin_edges_[f][b - 1]) if b >= 1 else -np.inf
             out.append(dict(feature=f, feature_name=None if names is None else str(names[f]),
-                            threshold=real, loss=_log_loss(target, margin, w),
+                            threshold=real, loss=log_loss_margin(target, margin, w),
                             current=(f, b) == current))
         best = min(r["loss"] for r in out)
         for r in out:

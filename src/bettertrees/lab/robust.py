@@ -21,14 +21,9 @@ fitted model is a plain sum of trees with the same interpretation API.
 
 import numpy as np
 
-from ..sums._common import base_margin, grad_hess, sigmoid
+from ..sums._common import base_margin, grad_hess, log_loss_margin, sigmoid
 from ..sums._kernels import best_cut_1d, hist_1d
 from ..sums.smalltrees import FIGSClassifier, SmallTree, grow_figs
-
-
-def _log_loss(target, margin, w):
-    p = np.clip(sigmoid(margin), 1e-15, 1 - 1e-15)
-    return float(-np.sum(w * (target * np.log(p) + (1 - target) * np.log(1 - p))) / w.sum())
 
 
 def _cuts(trees):
@@ -318,13 +313,13 @@ class RashomonFIGSClassifier(FIGSClassifier):
             self.rashomon_base_ = float(self.base_margin_)
             return self
         self._refit(current, Xt, yt, wt, self.refit_sweeps)
-        cur_loss = _log_loss(yv, self._margin(current, Xv), wv)
+        cur_loss = log_loss_margin(yv, self._margin(current, Xv), wv)
         scored = [(cur_loss, self._copy(current))]
         history = []
         for _ in range(int(self.n_mutations)):
             cand = self._mutate(self._copy(current), Xt, nb, yt, wt, rng)
             self._refit(cand, Xt, yt, wt, self.refit_sweeps)
-            loss = _log_loss(yv, self._margin(cand, Xv), wv)
+            loss = log_loss_margin(yv, self._margin(cand, Xv), wv)
             scored.append((loss, cand))
             if loss < cur_loss:
                 current, cur_loss = cand, loss

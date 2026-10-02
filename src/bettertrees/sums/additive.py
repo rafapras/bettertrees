@@ -27,9 +27,9 @@ from ._common import (
     binned,
     fit_inputs,
     grad_hess,
+    log_loss_margin,
     predict_input,
     rebin,
-    sigmoid,
     teacher_top_features,
     top_features,
 )
@@ -37,11 +37,6 @@ from ._kernels import best_cut_1d, best_depth2, depth2_leaf_ids, hist_1d, newton
 from .edit import TreeEditMixin
 from .explain import InterpretableSumMixin
 from .smalltrees import SmallTree, _side
-
-
-def _log_loss(y, m, w):
-    p = np.clip(sigmoid(m), 1e-15, 1 - 1e-15)
-    return float(-np.sum(w * (y * np.log(p) + (1 - y) * np.log(1 - p))) / np.sum(w))
 
 
 class AdditiveTreeBooster(TreeEditMixin, InterpretableSumMixin, ClassifierMixin, BaseEstimator):
@@ -190,9 +185,9 @@ class AdditiveTreeBooster(TreeEditMixin, InterpretableSumMixin, ClassifierMixin,
             terms.append((spec, values))
             if val.any():
                 m_val += values[depth2_leaf_ids(Xb_val, *spec)]
-                loss = _log_loss(y_val, m_val, w_val)
+                loss = log_loss_margin(y_val, m_val, w_val)
             else:
-                loss = _log_loss(y_tr, m_tr, w_tr)
+                loss = log_loss_margin(y_tr, m_tr, w_tr)
             history.append(loss)
             if loss < best - 1e-12:
                 best, best_round = loss, len(terms)

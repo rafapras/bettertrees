@@ -149,3 +149,25 @@ def predict_input(est, X, attribute):
     from sklearn.utils.validation import check_is_fitted, validate_data
     check_is_fitted(est, attribute)
     return validate_data(est, X, reset=False, **_VALIDATE)
+
+
+def log_loss_margin(y, margin, w):
+    """Weighted log-loss of a 0/1 or soft target ``y`` at the logit ``margin``.
+
+    Probabilities are clipped to [1e-15, 1 - 1e-15]. (``autotune._log_loss`` is another
+    function: it scores a probability matrix by class index.)
+    """
+    p = np.clip(sigmoid(margin), 1e-15, 1 - 1e-15)
+    return float(-np.sum(w * (y * np.log(p) + (1 - y) * np.log(1 - p))) / np.sum(w))
+
+
+def subtree_leaves(tree, node):
+    """Leaves under ``node`` of a ``SmallTree`` (depth-first, right child popped first)."""
+    stack, out = [node], []
+    while stack:
+        k = stack.pop()
+        if tree.left[k] == -1:
+            out.append(k)
+        else:
+            stack += [tree.left[k], tree.right[k]]
+    return out

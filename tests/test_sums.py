@@ -352,7 +352,7 @@ def test_rulefit_respects_condition_budget():
 
 @pytest.mark.parametrize("seed", range(4))
 def test_best_depth2_is_bitwise_equal_to_reference(seed):
-    from bettertrees.sums._kernels import best_depth2_reference
+    from _reference import best_depth2_reference
     rng = np.random.default_rng(seed)
     n, p = 3000, 7
     nb = rng.integers(3, 20, size=p).astype(np.int64)
