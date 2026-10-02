@@ -6,19 +6,20 @@ from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.utils.validation import check_is_fitted
 
 from .compact import CompactTreeBooster
-from .smalltrees import FIGSClassifier
+from .smalltrees import InterleavedTreeClassifier
 
 
 class BudgetClassifier(ClassifierMixin, BaseEstimator):
     """The best sum of trees for a budget of ``max_splits`` cuts, without tuning.
 
-    The rule our benchmark validated (binary classification, 10k to over 1M rows,
+    The rule our benchmark validated (lam = 2b, the ``InterleavedTreeClassifier`` default,
+    in both ITM regimes) (binary classification, 10k to over 1M rows,
     against LightGBM and XGBoost tuned under the same budget):
 
-    - up to 8 cuts: ``FIGSClassifier(max_splits=b, max_delta_step=4.0)``, full
+    - up to 8 cuts: ``InterleavedTreeClassifier(max_splits=b, max_delta_step=4.0)``, full
       Newton steps capped at 4 logits (without the cap, a nearly pure leaf of
       rare-class data can diverge);
-    - 9 to 64 cuts: ``FIGSClassifier(max_splits=b, learning_rate=0.3)``;
+    - 9 to 64 cuts: ``InterleavedTreeClassifier(max_splits=b, learning_rate=0.3)``;
     - above 64: ``CompactTreeBooster(max_splits=b)``, which counts distinct cuts.
 
     The fitted model is ``model_``; its interpretation and editing methods
@@ -32,7 +33,7 @@ class BudgetClassifier(ClassifierMixin, BaseEstimator):
 
     Attributes
     ----------
-    model_ : FIGSClassifier or CompactTreeBooster
+    model_ : InterleavedTreeClassifier or CompactTreeBooster
         The fitted model the rule chose.
     classes_, n_features_in_, feature_names_in_
         As in the chosen model.
@@ -47,9 +48,9 @@ class BudgetClassifier(ClassifierMixin, BaseEstimator):
             raise ValueError("max_splits must be an integer >= 1.")
         b = int(b)
         if b <= 8:
-            return FIGSClassifier(max_splits=b, max_delta_step=4.0)
+            return InterleavedTreeClassifier(max_splits=b, max_delta_step=4.0)
         if b <= 64:
-            return FIGSClassifier(max_splits=b, learning_rate=0.3)
+            return InterleavedTreeClassifier(max_splits=b, learning_rate=0.3)
         return CompactTreeBooster(max_splits=b)
 
     def fit(self, X, y, sample_weight=None):

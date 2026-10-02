@@ -8,9 +8,11 @@ cuts (internal nodes), summed over trees.
 - ``SumOfOptimalTrees``: K **optimal** Newton trees of depth d in {1, 2, 3}
   fitted in sequence on the residual, then ``backfit_sweeps`` passes of joint
   leaf re-estimation (each tree against the margin of the others).
-- ``FIGSClassifier``: Tan et al. (2022) with Newton/logit leaves: at each step,
-  the best cut in any leaf of any tree, or the root of a new tree, against the
-  margin of the other trees; stops at ``max_splits`` cuts.
+- ``InterleavedTreeClassifier`` (the Interleaved Tree Model, ITM; ``FIGSClassifier`` is
+  the same class): growth as in FIGS (Tan et al., 2022) with Newton/logit leaves and a
+  full leaf re-fit after each cut (RGF, Johnson and Zhang, 2014): at each step, the
+  best cut in any leaf of any tree, or the root of a new tree, against the margin of
+  the other trees; stops at ``max_splits`` cuts.
 """
 
 from dataclasses import dataclass, field
@@ -348,14 +350,29 @@ class SumOfOptimalTrees(_AdditiveTrees):
         return self
 
 
-class FIGSClassifier(_AdditiveTrees):
-    """FIGS (Tan et al., 2022) in logit space: up to ``max_splits`` cuts shared by
-    trees that grow together.
+class InterleavedTreeClassifier(_AdditiveTrees):
+    """Interleaved Tree Model (ITM): a logit sum of small trees grown together, binary
+    classification.
 
-    At each step, the best cut (Newton gain) in any leaf of any tree, or the
-    root of a new tree, against the margin of the other trees; leaves are then
-    re-estimated by backfitting. The number and shape of the trees come from
-    the data; the budget is the total number of cuts.
+    ``logit(p) = base + sum_k tree_k(x)``. The trees are small and share one budget of
+    distinct cuts (``max_splits``). At each step the best cut by Newton gain
+    ``G^2 / (H + lam)``, in any leaf of any tree or as the root of a new tree, against
+    the margin of the other trees, enters the model, and then every leaf is
+    re-estimated (one backfitting sweep by default). The number and shape of the trees
+    come from the data.
+
+    The growth rule comes from FIGS (Tan et al., 2022); re-fitting all the leaves after
+    each cut comes from RGF (Johnson and Zhang, 2014). The budget is counted in
+    distinct cuts.
+
+    The constructor's defaults are a full Newton step (``learning_rate=1.0``) and
+    ``lam="auto"`` (2 * max_splits), with no cap on the step. The rule the benchmark
+    validated for each budget is in ``BudgetClassifier``: lam = 2b; up to 8 cuts a full
+    step capped at 4 logits (``max_delta_step=4.0``); 9 to 64 cuts ``learning_rate=0.3``;
+    above 64 cuts ``CompactTreeBooster``. Use ``BudgetClassifier(b)`` to get that rule
+    instead of the plain constructor.
+
+    ``FIGSClassifier`` is another name for this class.
 
     Parameters
     ----------
@@ -436,8 +453,12 @@ class FIGSClassifier(_AdditiveTrees):
         return self
 
 
+# the name of the same model in the FIGS paper; an alias, not a subclass
+FIGSClassifier = InterleavedTreeClassifier
+
+
 def grow_figs(est, Xb, nb, target, w, max_splits, max_trees=None):
-    """FIGS growth on binned data (shared by ``FIGSClassifier`` and its bagged
+    """FIGS growth on binned data (shared by ``InterleavedTreeClassifier`` and its bagged
     and Rashomon variants). ``est`` provides ``base_margin_``, ``lam_``,
     ``learning_rate_``, ``min_weight`` and ``backfit_sweeps``; returns the trees."""
     n, B = len(Xb), int(nb.max())

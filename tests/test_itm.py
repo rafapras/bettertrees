@@ -9,7 +9,7 @@ import pytest
 from sklearn.base import clone
 
 from bettertrees import FIGSClassifier
-from bettertrees.experimental import InteractingFIGSClassifier
+from bettertrees.experimental import InteractingTreeClassifier
 from bettertrees.experimental._itm_kernels import affine_grad_hess, joint_system
 from bettertrees.experimental.itm import CUT, NODE, TREE, _subtree_leaves
 from bettertrees.sums._common import grad_hess
@@ -64,7 +64,7 @@ def test_no_terms_is_figs_bitwise(budget, weighted, off):
     original = X.copy()
     w = np.arange(len(y)) % 4 if weighted else None
     a = FIGSClassifier(**rule(budget)).fit(X, y, sample_weight=w, y_soft=soft)
-    b = InteractingFIGSClassifier(**rule(budget), **off).fit(X, y, sample_weight=w, y_soft=soft)
+    b = InteractingTreeClassifier(**rule(budget), **off).fit(X, y, sample_weight=w, y_soft=soft)
     assert b.n_interactions_ == 0
     assert_same(a, b, X)
     np.testing.assert_array_equal(X, original)
@@ -75,7 +75,7 @@ def test_no_candidate_keeps_figs_bitwise(forms):
     # one tree: no second tree to pair with, so the grower runs the production path
     X, y, _ = data()
     a = FIGSClassifier(max_splits=8, max_trees=1, learning_rate=.3).fit(X, y)
-    b = InteractingFIGSClassifier(max_splits=8, max_trees=1, learning_rate=.3, forms=forms).fit(X, y)
+    b = InteractingTreeClassifier(max_splits=8, max_trees=1, learning_rate=.3, forms=forms).fit(X, y)
     assert b.n_interactions_ == 0
     assert_same(a, b, X)
 
@@ -137,7 +137,7 @@ def test_candidate_scores_match_dense_reference(form):
     X, y, soft = product_data(n=3000)
     X[::17, 1] = np.nan
     base = FIGSClassifier(max_splits=7, learning_rate=.3, max_bins=8).fit(X, y)
-    est = InteractingFIGSClassifier.from_structure(
+    est = InteractingTreeClassifier.from_structure(
         base, base.trees_, [], X, y, forms=(form,), max_splits=7, max_bins=8, min_weight=20,
         max_partners=99)
     from bettertrees.sums._common import rebin
@@ -187,7 +187,7 @@ def mixed_model(n=2000):
         dict(f1=(CUT, 3, 4), f2=(TREE, 0, -1), center=(.5, 0.), scale=(.5, 1.1), gamma=.2),
         dict(f1=(CUT, *c0), f2=(CUT, *c1), center=(.4, .6), scale=(.5, .5), gamma=-.15),
     ]
-    est = InteractingFIGSClassifier.from_structure(base, base.trees_, terms, X, y)
+    est = InteractingTreeClassifier.from_structure(base, base.trees_, terms, X, y)
     return est, X, y
 
 
@@ -251,7 +251,7 @@ def test_refit_step_lowers_training_loss_and_keeps_margin_exact():
 def test_fit_margin_budget_and_heredity(form, order):
     X, y, soft = product_data()
     forms = FORMS if form == "all" else (form,)
-    est = InteractingFIGSClassifier(**rule(16), forms=forms, order=order).fit(X, y)
+    est = InteractingTreeClassifier(**rule(16), forms=forms, order=order).fit(X, y)
     assert est.n_units_ <= 16
     np.testing.assert_allclose(est.training_margin_, est.decision_function(X), atol=1e-12)
     np.testing.assert_allclose(est._incremental_margin_, est.training_margin_, atol=1e-9)
@@ -281,7 +281,7 @@ def test_fit_margin_budget_and_heredity(form, order):
 def test_interacting_data_selects_terms_of_every_form():
     X, y, soft = product_data()
     for form in FORMS:
-        est = InteractingFIGSClassifier(**rule(16), forms=(form,)).fit(X, y, y_soft=soft)
+        est = InteractingTreeClassifier(**rule(16), forms=(form,)).fit(X, y, y_soft=soft)
         assert est.n_interactions_ > 0, form
 
 
@@ -291,7 +291,7 @@ def test_sql_matches_every_term_kind_with_missing_values(form):
     X[::11, 0] = np.nan
     X[::7, 2] = np.nan
     forms = FORMS if form == "all" else (form,)
-    est = InteractingFIGSClassifier(**rule(16), forms=forms).fit(X, y, y_soft=soft)
+    est = InteractingTreeClassifier(**rule(16), forms=forms).fit(X, y, y_soft=soft)
     if form == "all":
         assert est.n_interactions_ > 0
     check_sql(est, X)
@@ -340,7 +340,7 @@ def test_posthoc_freezes_partitions_and_does_not_mutate_source():
     X, y, soft = product_data()
     base = FIGSClassifier(max_splits=8, learning_rate=.3).fit(X, y)
     before = copy.deepcopy(base)
-    est = InteractingFIGSClassifier.from_fitted(base, X, y, max_interactions=2, y_soft=soft)
+    est = InteractingTreeClassifier.from_fitted(base, X, y, max_interactions=2, y_soft=soft)
     assert est.n_splits_ == base.n_splits_
     assert est.n_interactions_ > 0
     for a, b in zip(base.trees_, est.trees_):
@@ -351,13 +351,13 @@ def test_posthoc_freezes_partitions_and_does_not_mutate_source():
 
 def test_exact_null_selects_nothing():
     X, y, _ = data()
-    est = InteractingFIGSClassifier(max_splits=8, min_gain=1e-10).fit(X, y, y_soft=np.full(len(y), .5))
+    est = InteractingTreeClassifier(max_splits=8, min_gain=1e-10).fit(X, y, y_soft=np.full(len(y), .5))
     assert est.n_units_ == 0
 
 
 def test_sklearn_clone_and_refit_clear_state():
     X, y, soft = product_data(n=2000)
-    est = InteractingFIGSClassifier(**rule(8))
+    est = InteractingTreeClassifier(**rule(8))
     assert clone(est).get_params() == est.get_params()
     est.fit(X, y, y_soft=soft)
     est.set_params(max_interactions=0).fit(X, y, y_soft=soft)
@@ -380,7 +380,7 @@ def test_conditions_and_distinct_counts():
 def test_invalid_parameters(params):
     X, y, _ = data(n=100)
     with pytest.raises(ValueError):
-        InteractingFIGSClassifier(**params).fit(X, y)
+        InteractingTreeClassifier(**params).fit(X, y)
 
 
 def test_single_tree_from_nested_region_text():

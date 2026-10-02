@@ -1,8 +1,8 @@
 # ITM step 3 (experimental): one-parameter product terms
 
-`from bettertrees.experimental import InteractingFIGSClassifier`
+`from bettertrees.experimental import InteractingTreeClassifier`
 
-    InteractingFIGSClassifier(max_splits=16, learning_rate=.3, forms=("M1", "M2", "M3", "M4", "M5"),
+    InteractingTreeClassifier(max_splits=16, learning_rate=.3, forms=("M1", "M2", "M3", "M4", "M5"),
                               order="interleaved").fit(X, y)
 
 `max_splits` is the total budget: cuts + terms, one unit each. Each term is

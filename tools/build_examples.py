@@ -37,7 +37,7 @@ NB["01_quickstart"] = [
 # Quickstart: 16 cuts as a sum of small trees
 
 A single decision tree with a small budget spends its cuts copying the same effect
-into different branches. `FIGSClassifier` spends the **same number of cuts** on a
+into different branches. `InterleavedTreeClassifier` spends the **same number of cuts** on a
 logit sum of a few small trees, and the result still reads as a scorecard.
 
 The data are simulated credit defaults (`credit_data.py`): the true model is a sum of
@@ -47,13 +47,13 @@ one-feature effects plus one interaction, so we know what a good model should fi
     new_code_cell("""\
 from sklearn.tree import DecisionTreeClassifier
 
-from bettertrees import BudgetClassifier, FIGSClassifier, SumOfOptimalTrees
+from bettertrees import BudgetClassifier, InterleavedTreeClassifier, SumOfOptimalTrees
 
 models = {
     "CART, 16 cuts (17 leaves)": DecisionTreeClassifier(
         max_leaf_nodes=17, min_samples_leaf=50, random_state=0),
     "BudgetClassifier, 16 cuts (the no-tuning rule)": BudgetClassifier(max_splits=16),
-    "FIGS, 16 cuts": FIGSClassifier(max_splits=16),
+    "ITM, 16 cuts": InterleavedTreeClassifier(max_splits=16),
     "sum of optimal depth-2 trees, 16 cuts": SumOfOptimalTrees(
         n_trees=5, depth=2, extra_stumps=1),
 }
@@ -68,20 +68,20 @@ pd.DataFrame(rows).set_index("model").round(4)"""),
 `explain()` prints the whole model. To score a row, start from the base, add one
 value per tree (the leaf the row falls into) and apply the sigmoid."""),
     new_code_cell("""\
-figs = models["FIGS, 16 cuts"]
-print(figs.explain())"""),
+itm = models["ITM, 16 cuts"]
+print(itm.explain())"""),
     new_markdown_cell("""\
 Tree 1 found the interaction we planted: a high debt ratio matters much more for people
 who already paid late. The other trees are mostly single effects (income, employment,
 age), which a single tree would have had to repeat in several branches."""),
     new_code_cell("""\
 row = X_test.iloc[[0]]
-contrib = figs.predict_contributions(row)[0]
-logit = figs.base_margin_ + contrib.sum()
+contrib = itm.predict_contributions(row)[0]
+logit = itm.base_margin_ + contrib.sum()
 print(row.T.rename(columns={row.index[0]: "value"}))
-print(f"\\nbase {figs.base_margin_:+.3f} + trees {' '.join(f'{c:+.3f}' for c in contrib)}")
+print(f"\\nbase {itm.base_margin_:+.3f} + trees {' '.join(f'{c:+.3f}' for c in contrib)}")
 print(f"= logit {logit:+.3f} -> P(default) = {1 / (1 + np.exp(-logit)):.1%}")
-print(f"predict_proba: {figs.predict_proba(row)[0, 1]:.1%}")"""),
+print(f"predict_proba: {itm.predict_proba(row)[0, 1]:.1%}")"""),
     new_markdown_cell("""\
 ## Choosing the budget
 
@@ -89,7 +89,7 @@ The budget is the one knob. It works with the usual scikit-learn tools."""),
     new_code_cell("""\
 from sklearn.model_selection import GridSearchCV
 
-search = GridSearchCV(FIGSClassifier(), {"max_splits": [4, 8, 16, 32]},
+search = GridSearchCV(InterleavedTreeClassifier(), {"max_splits": [4, 8, 16, 32]},
                       scoring="neg_log_loss", cv=3).fit(X_train, y_train)
 pd.DataFrame(search.cv_results_)[["param_max_splits", "mean_test_score"]]"""),
 ]
@@ -98,18 +98,18 @@ NB["02_interpretation"] = [
     new_markdown_cell("""\
 # Interpretation: rules, contributions and shapes
 
-Every sum in `bettertrees` (`FIGSClassifier`, `SumOfOptimalTrees`, `CompactTreeBooster`,
-...) has the same interpretation API. Here we fit one FIGS and check it against the
+Every sum in `bettertrees` (`InterleavedTreeClassifier`, `SumOfOptimalTrees`, `CompactTreeBooster`,
+...) has the same interpretation API. Here we fit one ITM and check it against the
 true effects of the simulated data."""),
     new_code_cell(SETUP),
     new_code_cell("""\
-from bettertrees import FIGSClassifier
+from bettertrees import InterleavedTreeClassifier
 
-figs = FIGSClassifier(max_splits=16).fit(X_train, y_train)"""),
+itm = InterleavedTreeClassifier(max_splits=16).fit(X_train, y_train)"""),
     new_markdown_cell("## Rules\n\nOne entry per leaf: tree, conditions, value added to "
                       "the logit."),
     new_code_cell("""\
-rules = pd.DataFrame(figs.rules(), columns=["tree", "conditions", "logit"])
+rules = pd.DataFrame(itm.rules(), columns=["tree", "conditions", "logit"])
 rules["conditions"] = rules["conditions"].str.join(" and ")
 rules.round(3)"""),
     new_markdown_cell("""\
@@ -117,9 +117,9 @@ rules.round(3)"""),
 
 `plot_contributions` draws the waterfall from the base to the prediction."""),
     new_code_cell("""\
-i = int(np.argmax(figs.predict_proba(X_test)[:, 1]))  # the riskiest test row
+i = int(np.argmax(itm.predict_proba(X_test)[:, 1]))  # the riskiest test row
 print(X_test.iloc[i])
-figs.plot_contributions(X_test.iloc[i]);"""),
+itm.plot_contributions(X_test.iloc[i]);"""),
     new_markdown_cell("""\
 ## Effects against the truth
 
@@ -141,7 +141,7 @@ for ax, feature in zip(axes, ["age", "debt_ratio", "late_payments", "months_empl
     for v in grid:
         Xv = sample.copy()
         Xv[feature] = v
-        pd_logit.append(figs.decision_function(Xv).mean())
+        pd_logit.append(itm.decision_function(Xv).mean())
     pd_logit, true = np.array(pd_logit), truth[feature](grid)
     ax.plot(grid, true - true.mean(), color="0.6", lw=3, label="true")
     ax.step(grid, pd_logit - pd_logit.mean(), where="post", label="fitted (16 cuts)")
@@ -160,9 +160,9 @@ in any language."""),
     new_code_cell("""\
 import json
 
-spec = figs.to_dict(feature_names=list(X.columns))
+spec = itm.to_dict(feature_names=list(X.columns))
 print(json.dumps(spec, indent=1)[:800], "...")"""),
-    new_code_cell("print(figs.export_text())"),
+    new_code_cell("print(itm.export_text())"),
 ]
 
 NB["03_editing"] = [
@@ -174,7 +174,7 @@ monotone effect. After an edit, `refit_leaves` re-estimates the leaf values for 
 structure, and every output (rules, contributions, JSON) follows."""),
     new_code_cell(SETUP),
     new_code_cell("""\
-from bettertrees import FIGSClassifier
+from bettertrees import InterleavedTreeClassifier
 
 
 def score(model):
@@ -182,9 +182,9 @@ def score(model):
     return f"AUC {roc_auc_score(y_test, p):.4f}, log-loss {log_loss(y_test, p):.4f}"
 
 
-figs = FIGSClassifier(max_splits=16).fit(X_train, y_train)
-print("fitted:", score(figs))
-print(figs.explain())"""),
+itm = InterleavedTreeClassifier(max_splits=16).fit(X_train, y_train)
+print("fitted:", score(itm))
+print(itm.explain())"""),
     new_markdown_cell("""\
 ## Round a threshold
 
@@ -194,11 +194,11 @@ not exactly, 0.45), and `refit_leaves` updates the values."""),
     new_code_cell("""\
 import copy
 
-tree0 = figs.get_trees()[0]
+tree0 = itm.get_trees()[0]
 node = next(k for k, name in enumerate(tree0["feature_name"]) if name == "debt_ratio")
 print("before:", tree0["threshold"][node])
 
-edited = copy.deepcopy(figs)
+edited = copy.deepcopy(itm)
 edited.set_cut(0, node, "debt_ratio", 0.45)
 edited.refit_leaves(X_train, y_train)
 print("after: ", edited.get_trees()[0]["threshold"][node])
@@ -238,7 +238,7 @@ too much into the particular feature it chose."""),
     new_code_cell("""\
 X_fit, X_val, y_fit, y_val = train_test_split(
     X_train, y_train, test_size=0.25, random_state=1, stratify=y_train)
-model = FIGSClassifier(max_splits=16).fit(X_fit, y_fit)
+model = InterleavedTreeClassifier(max_splits=16).fit(X_fit, y_fit)
 pd.DataFrame(model.cut_alternatives(X_val, y_val, tree=0, node=0, epsilon=0.01))"""),
     new_markdown_cell("""\
 ## The Rashomon view
@@ -259,7 +259,7 @@ high). The mortgage flag can drop to zero: some models that fit just as well do 
 it at all, so its importance in any one model should not be over-read.
 
 (The Rashomon search holds out 20% of the training rows for validation, so its selected
-model is fit on less data than the plain FIGS above; use it to see the set, not as a
+model is fit on less data than the plain ITM above; use it to see the set, not as a
 better predictor.)"""),
 ]
 

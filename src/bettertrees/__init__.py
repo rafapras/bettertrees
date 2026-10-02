@@ -5,7 +5,10 @@
 - ``FastDecisionTreeClassifier`` / ``FastDecisionTreeClassifierCV``: a single tree
   (exact and histogram engines), with leaf count and shrinkage chosen by CV.
 - ``SumOfOptimalTrees``: a logit sum of a few Newton-optimal trees (depth 1-3).
-- ``FIGSClassifier``: FIGS (Tan et al., 2022) in logit space.
+- ``InterleavedTreeClassifier`` (the Interleaved Tree Model, ITM): a logit sum of small
+  trees; each step adds the best cut of any tree (or a new root) by Newton gain and
+  re-fits all leaves. Growth from FIGS (Tan et al., 2022), re-fit from RGF.
+  ``FIGSClassifier`` is the same class under its older name.
 - ``BaggedFIGSClassifier``, ``RashomonFIGSClassifier``: FIGS with a bagged or
   Rashomon structure selection (medium budgets).
 - ``CompactTreeBooster``: shrunken boosting of optimal trees counted in distinct
@@ -31,6 +34,7 @@ from .sums import (
     BudgetClassifier,
     CompactTreeBooster,
     FIGSClassifier,
+    InterleavedTreeClassifier,
     LightGBMRefitClassifier,
     RashomonFIGSClassifier,
     SumOfOptimalTrees,
@@ -41,5 +45,5 @@ __version__ = "0.1.0.dev0"
 
 __all__ = ["AdditiveTreeBooster", "BaggedFIGSClassifier", "BudgetClassifier",
            "CompactTreeBooster", "FIGSClassifier", "FastDecisionTreeClassifier",
-           "FastDecisionTreeClassifierCV", "LightGBMRefitClassifier", "RashomonFIGSClassifier",
+           "FastDecisionTreeClassifierCV", "InterleavedTreeClassifier", "LightGBMRefitClassifier", "RashomonFIGSClassifier",
            "SumOfOptimalTrees", "__version__", "from_lightgbm"]

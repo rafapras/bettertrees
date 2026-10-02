@@ -25,15 +25,21 @@ interpretation and editing methods.
 
 | regime | model | output |
 |---|---|---|
-| **any budget, no tuning** | **`BudgetClassifier`** | FIGS up to 64 cuts, `CompactTreeBooster` above |
+| **any budget, no tuning** | **`BudgetClassifier`** | `InterleavedTreeClassifier` up to 64 cuts, `CompactTreeBooster` above |
 | one tree | `FastDecisionTreeClassifierCV` | a single tree; leaf count and hierarchical shrinkage chosen by CV |
-| **interpretable (4–16 cuts)** | `FIGSClassifier`, `SumOfOptimalTrees` | `logit(p) = base + Σ tree_k(x)`, a few shallow trees |
-| medium capacity (32–64 cuts) | `FIGSClassifier(learning_rate=0.3)`, `SumOfOptimalTrees` | the same sum with more trees |
+| **interpretable (4–16 cuts)** | `InterleavedTreeClassifier`, `SumOfOptimalTrees` | `logit(p) = base + Σ tree_k(x)`, a few shallow trees |
+| medium capacity (32–64 cuts) | `InterleavedTreeClassifier(learning_rate=0.3)`, `SumOfOptimalTrees` | the same sum with more trees |
 | medium capacity, counted in distinct cuts | `CompactTreeBooster` | shrunken boosting of optimal trees; identical trees merged, so re-used cuts are free |
 | free capacity | `AdditiveTreeBooster` | a long sum of optimal depth-2 trees with early stopping |
 
-- `FIGSClassifier(max_splits=b)` grows several trees at once, one cut at a time
-  (FIGS, Tan et al. 2022), with Newton leaves in logit space.
+- `InterleavedTreeClassifier(max_splits=b)` is the **Interleaved Tree Model (ITM)**: a
+  logit sum of small trees that grow together. At each step the best cut by Newton
+  gain, in any leaf of any tree or as a new root, enters the model and every leaf is
+  re-fitted (one backfitting sweep). The growth comes from FIGS (Tan et al. 2022),
+  the full leaf re-fit from RGF (Johnson and Zhang 2014); the budget is counted in
+  distinct cuts. The constructor's defaults are a full step (`learning_rate=1`),
+  `lam="auto"` (2b) and no cap; the validated rule is in `BudgetClassifier`.
+  `FIGSClassifier` is the same class under its older name.
 - `SumOfOptimalTrees(n_trees=K, depth=2, extra_stumps=r)` uses `3K + r` cuts:
   each depth-2 tree is the **optimal** Newton tree on the current residual
   (exhaustive search over bins), followed by backfitting. `search="greedy"`
@@ -51,8 +57,9 @@ The sums are **binary** (they raise on a multiclass target); wrap them in
 `OneVsRestClassifier` for more classes. The single tree is natively multiclass.
 
 **The no-tuning rule** (`BudgetClassifier`) for a budget of `b` cuts:
-`FIGSClassifier(max_splits=b, max_delta_step=4.0)` up to 8 cuts,
-`FIGSClassifier(max_splits=b, learning_rate=0.3)` up to 64, and
+`InterleavedTreeClassifier(max_splits=b, max_delta_step=4.0)` up to 8 cuts,
+`InterleavedTreeClassifier(max_splits=b, learning_rate=0.3)` up to 64 (both with
+`lam = 2b`), and
 `CompactTreeBooster(max_splits=b)` above. `max_delta_step` caps each Newton step on a
 leaf; without it, a full step on a nearly pure leaf of rare-class data can diverge.
 
@@ -76,10 +83,10 @@ known effects (no download):
 
 ```python
 from sklearn.datasets import load_breast_cancer
-from bettertrees import FIGSClassifier
+from bettertrees import InterleavedTreeClassifier
 
 X, y = load_breast_cancer(return_X_y=True, as_frame=True)  # a DataFrame (needs pandas) gives feature names
-model = FIGSClassifier(max_splits=6).fit(X, y)
+model = InterleavedTreeClassifier(max_splits=6).fit(X, y)
 print(model.explain())
 ```
 
@@ -193,7 +200,7 @@ bettertrees stands on these ideas; what we took from each:
 
 | work | what bettertrees borrows |
 |---|---|
-| **FIGS** — Tan, Singh, Nasseri, Agarwal, et al. "Fast Interpretable Greedy-Tree Sums." arXiv:2201.11931 (2022); [imodels](https://github.com/csinva/imodels) | The sum-of-trees model that grows several trees at once, one cut at a time. `FIGSClassifier` re-implements it with Newton/logit leaves and backfitting. |
+| **FIGS** — Tan, Singh, Nasseri, Agarwal, et al. "Fast Interpretable Greedy-Tree Sums." arXiv:2201.11931 (2022); [imodels](https://github.com/csinva/imodels) | The sum-of-trees model that grows several trees at once, one cut at a time. `InterleavedTreeClassifier` (the ITM) re-implements it with Newton/logit leaves and backfitting. |
 | **Hierarchical Shrinkage** — Agarwal, Tan, Ronen, Singh, Yu. *ICML* (2022) | Leaf values shrunk toward their ancestors; the leaf model of the single tree and of its CV. |
 | **XGBoost** — Chen, Guestrin. *KDD* (2016) | The second-order (Newton) gain `G²/(H+λ)` and leaf value `-G/(H+λ)` used by every sum. |
 | **LightGBM** — Ke et al. *NeurIPS* (2017); scikit-learn's HistGradientBoosting | Quantile histograms (≤ 255 bins, missing values in their own bin), the (optional) histogram subtraction trick and best-first, leaf-wise growth. |

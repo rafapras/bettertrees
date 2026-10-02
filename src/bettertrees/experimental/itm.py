@@ -69,8 +69,12 @@ def _key(f1, f2):
     return frozenset([tuple(f1), tuple(f2)])
 
 
-class InteractingFIGSClassifier(InterpretableSumMixin, ClassifierMixin, BaseEstimator):
-    """ITM with one-parameter product terms, binary classification.
+class InteractingTreeClassifier(InterpretableSumMixin, ClassifierMixin, BaseEstimator):
+    """Sum of small trees plus product terms (experimental), binary classification.
+
+    A variant of the Interleaved Tree Model (``InterleavedTreeClassifier``) whose model
+    adds terms that are products of two factors, each with one coefficient. Negative or
+    inconclusive in the benchmark so far; see ``docs/ITM_INTERACTIONS.md``.
 
     ``eta = base + sum_k T_k + sum_e gamma_e * phi_e1 * phi_e2``, where each factor is
     ``phi = (raw - center) / scale`` with center and scale (h-weighted) fixed when the
@@ -632,7 +636,7 @@ class InteractingFIGSClassifier(InterpretableSumMixin, ClassifierMixin, BaseEsti
         result = super().to_dict(feature_names, precision)
         names = self._names(feature_names)
         result.update(
-            model="InteractingFIGSClassifier",
+            model="InteractingTreeClassifier",
             n_units=self.n_units_,
             n_splits=self.n_splits_,
             n_distinct_splits=self.n_distinct_splits_,
@@ -721,3 +725,7 @@ def _dummy_pair_gain(Gab, Hab, Ga, Ha, Gb, Hb, G, H, lam):
     Hu = ((1 - 2 * ca) * (1 - 2 * cb) * Hab + (1 - 2 * ca) * cb * cb * Ha
           + ca * ca * (1 - 2 * cb) * Hb + ca * ca * cb * cb * H) / (sa2 * sb2)
     return Gu * Gu / (Hu + lam), ca, sa, cb, sb
+
+
+# the name this class had before the Interleaved Tree Model was named
+InteractingFIGSClassifier = InteractingTreeClassifier
