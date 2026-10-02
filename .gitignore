@@ -1,6 +1,12 @@
 __pycache__/
+*.nbc
+*.nbi
 *.egg-info/
 build/
 dist/
 .venv*/
+.pytest_cache/
+.ruff_cache/
+# reference material kept on disk, not versioned
 docs/reference/
+docs/paper/
