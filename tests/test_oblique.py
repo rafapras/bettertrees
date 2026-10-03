@@ -5,6 +5,7 @@ from itertools import combinations
 import numpy as np
 import pandas as pd
 import pytest
+from _sklearn_checks import run_estimator_check
 from sklearn.base import clone
 from sklearn.metrics import log_loss
 from sklearn.utils.estimator_checks import parametrize_with_checks
@@ -311,8 +312,8 @@ def test_three_feature_subsets_and_random_strategy_are_deterministic():
 @parametrize_with_checks([ObliqueFIGSClassifier(max_splits=8),
                           ObliqueFIGSClassifier(max_splits=4, subset_strategy="random",
                                                 min_weight=1.0)])
-def test_sklearn_compatible(estimator, check):
-    check(estimator)
+def test_sklearn_compatible(estimator, check, monkeypatch):
+    run_estimator_check(estimator, check, monkeypatch)
 
 
 def test_clone_get_params_and_refit():

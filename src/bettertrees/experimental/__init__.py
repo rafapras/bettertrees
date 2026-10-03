@@ -2,7 +2,8 @@
 
 - ``PrecisionTreeClassifier``: a single tree whose cuts maximize one class's precision.
 - ``ObliqueFIGSClassifier``: the Interleaved Tree Model whose cuts may be oblique, on
-  pairs of features (RO-FIGS-like); a real gain with 8 cuts.
+  pairs of features (RO-FIGS-like); in the benchmark it helped at 4 and 8 cuts and added
+  little at 16 and 32.
 
 The modules with negative or inconclusive results (distillation, pair and ratio
 features, RuleFit, the product-term variant, the multilevel tree) are in

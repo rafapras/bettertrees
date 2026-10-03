@@ -108,7 +108,7 @@ def scan_projection(z, g, h, w, edges, lam, min_weight):
 
 
 class ObliqueFIGSClassifier(ClassifierMixin, BaseEstimator):
-    """FIGS (Newton/logit leaves, backfitting) whose cuts may be oblique.
+    """The Interleaved Tree Model whose cuts may be oblique (experimental).
 
     Every step scores, in every leaf of every tree and at the root of a new tree,
     the best axis cut and the best oblique cut ``[w . x~ > t]`` (``w`` supported
@@ -163,6 +163,15 @@ class ObliqueFIGSClassifier(ClassifierMixin, BaseEstimator):
     cut thresholds not counted); ``n_params_with_thresholds_`` adds one per
     split; ``n_distinct_splits_``; ``conditions_read(X)`` and
     ``variables_read(X)``.
+
+    Examples
+    --------
+    >>> from sklearn.datasets import load_breast_cancer
+    >>> from bettertrees.experimental import ObliqueFIGSClassifier
+    >>> X, y = load_breast_cancer(return_X_y=True)
+    >>> model = ObliqueFIGSClassifier(max_splits=4, max_delta_step=4.0).fit(X, y)
+    >>> model.n_splits_ <= 4
+    True
     """
 
     def __init__(self, *, max_splits=16, max_trees=None, lam="auto", min_weight=20.0,

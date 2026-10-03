@@ -47,6 +47,15 @@ from .explain import InterpretableSumMixin, leaf_rules
 
 @dataclass
 class SmallTree:
+    """One tree of a sum, stored as parallel per-node lists (cuts in bins).
+
+    ``feature[k]`` and ``threshold[k]`` (a bin index; rows with bin <= threshold go
+    left) describe node ``k``; ``left``/``right`` are child indices, -1 at a leaf;
+    ``value`` holds the logit contribution of each node (only leaves enter the sum).
+    Fitted sums keep their trees in ``trees_``; ``get_trees()`` returns them with
+    real thresholds.
+    """
+
     feature: list = field(default_factory=lambda: [-1])
     threshold: list = field(default_factory=lambda: [-1])
     left: list = field(default_factory=lambda: [-1])
@@ -218,7 +227,8 @@ class _AdditiveTrees(TreeEditMixin, InterpretableSumMixin, ClassifierMixin, Base
 
     def decision_function(self, X):
         """Logit of ``P(y = classes_[1])``: base plus the sum of the trees."""
-        Xb = rebin(predict_input(self, X, "trees_"), self.bin_edges_)
+        Xb = rebin(predict_input(self, X, "trees_"), self.bin_edges_,
+                   dtype=getattr(self, "input_dtype_", np.float32))
         m = np.full(len(Xb), self.base_margin_)
         for tree in self.trees_:
             m += tree.value[tree.leaf_ids(Xb)]
@@ -272,12 +282,24 @@ class SumOfOptimalTrees(_AdditiveTrees):
         The trees, with cuts in bins; ``get_trees()`` gives real thresholds.
     base_margin_ : float
         Initial constant logit.
+    lam_, learning_rate_ : float
+        Effective regularization and step.
     classes_, n_features_in_, feature_names_in_, bin_edges_, nan_features_
         scikit-learn and binning conventions.
 
-    Interpretation methods: ``explain``, ``rules``, ``to_dict``,
+    Interpretation methods: ``explain``, ``rules``, ``to_dict``, ``to_sql``,
     ``get_trees``, ``export_text``, ``predict_contributions``,
-    ``plot_contributions``, ``plot_shapes``, ``to_shap_model``.
+    ``plot_contributions``, ``plot_shapes``, ``to_shap_model``; and the editing
+    methods of every sum.
+
+    Examples
+    --------
+    >>> from sklearn.datasets import load_breast_cancer
+    >>> from bettertrees import SumOfOptimalTrees
+    >>> X, y = load_breast_cancer(return_X_y=True)
+    >>> model = SumOfOptimalTrees(n_trees=2, depth=2, feature_screen="fast").fit(X, y)
+    >>> len(model.trees_), model.n_splits_
+    (2, 6)
     """
 
     def __init__(self, *, n_trees=2, depth=2, learning_rate="auto", lam=2.0,
@@ -372,7 +394,7 @@ class InterleavedTreeClassifier(_AdditiveTrees):
     (evaluated up to 64 cuts, applied unvalidated above). Use
     ``BudgetClassifier(b)`` to get that rule instead of the plain constructor.
 
-    ``FIGSClassifier`` is another name for this class.
+    ``FIGSClassifier`` is an alias: the same class under its older name.
 
     Parameters
     ----------
@@ -382,8 +404,8 @@ class InterleavedTreeClassifier(_AdditiveTrees):
         Maximum number of trees.
     lam : float or "auto", default="auto"
         L2 regularization of the leaves (in the gain and the Newton step).
-        "auto" = 2 * max_splits: the tuned lambda grows with the budget (about 5
-        with 4 cuts, about 300 with 64); without it, large budgets overfit.
+        "auto" = 2 * max_splits, the value of the benchmark rule: larger budgets
+        need more regularization.
     min_weight : float, default=20.0
         Minimum hessian mass per leaf.
     max_bins : int, default=32
@@ -391,14 +413,14 @@ class InterleavedTreeClassifier(_AdditiveTrees):
     backfit_sweeps : int, default=1
         Passes of leaf re-estimation after each cut.
     learning_rate : float, default=1.0
-        Shrinkage of every Newton step on the leaves (1 = the full step of the
-        original FIGS). Below 1 it regularizes large budgets on small data,
-        where full steps overfit.
+        Shrinkage of every Newton step on the leaves (1 = the full Newton step).
+        Below 1 it damps the first move of a new leaf; the later sweeps keep
+        moving it toward its full value.
     max_delta_step : float or None, default=None
         Cap on each leaf's Newton step, in logits (as XGBoost's ``max_delta_step``).
         With a rare class, a full step on a nearly pure leaf can reach hundreds of
-        logits and backfitting then flips signs; a cap of about 1 prevents it
-        (recommended for imbalanced data with small budgets). None = no cap.
+        logits and backfitting then flips signs; the cap prevents it (the benchmark
+        rule uses 4.0 up to 8 cuts). None = no cap.
 
     Attributes
     ----------
@@ -406,12 +428,30 @@ class InterleavedTreeClassifier(_AdditiveTrees):
         The trees, with cuts in bins; ``get_trees()`` gives real thresholds.
     base_margin_ : float
         Initial constant logit.
+    lam_, learning_rate_ : float
+        Effective regularization and step.
     classes_, n_features_in_, feature_names_in_, bin_edges_, nan_features_
         scikit-learn and binning conventions.
 
-    Interpretation methods: ``explain``, ``rules``, ``to_dict``,
+    Interpretation methods: ``explain``, ``rules``, ``to_dict``, ``to_sql``,
     ``get_trees``, ``export_text``, ``predict_contributions``,
-    ``plot_contributions``, ``plot_shapes``, ``to_shap_model``.
+    ``plot_contributions``, ``plot_shapes``, ``to_shap_model``; editing methods:
+    ``prune``, ``set_cut``, ``split_leaf``, ``add_stump``, ``refit_leaves``, ...
+
+    See Also
+    --------
+    BudgetClassifier : this model with the benchmark rule for each budget.
+
+    Examples
+    --------
+    >>> from sklearn.datasets import load_breast_cancer
+    >>> from bettertrees import InterleavedTreeClassifier
+    >>> X, y = load_breast_cancer(return_X_y=True)
+    >>> model = InterleavedTreeClassifier(max_splits=6).fit(X, y)
+    >>> model.n_splits_
+    6
+    >>> model.predict_proba(X[:2]).shape
+    (2, 2)
     """
 
     def __init__(self, *, max_splits=16, max_trees=None, lam="auto", min_weight=20.0,

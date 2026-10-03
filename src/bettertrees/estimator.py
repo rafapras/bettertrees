@@ -93,6 +93,25 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         lambda and the number of leaves by internal validation, use
         ``FastDecisionTreeClassifierCV``.
 
+    Attributes
+    ----------
+    classes_ : ndarray of shape (n_classes,)
+        Class labels.
+    n_classes_, n_features_in_ : int
+        Number of classes and of features.
+    feature_names_in_ : ndarray of str
+        Column names, when ``X`` is a DataFrame.
+    nodes_ : object
+        The fitted tree as per-node arrays (``feature``, ``threshold``, ``left``,
+        ``right``, ``missing_left``, ...).
+    leaf_probabilities_ : ndarray or None
+        Per-node class probabilities after hierarchical shrinkage when
+        ``leaf_shrinkage > 0``; None otherwise.
+    feature_importances_ : ndarray of shape (n_features,)
+        Weighted Gini decrease per feature, normalized.
+    fit_stats_ : dict
+        Timings and search counters of the fit.
+
     Notes
     -----
     Cuts are scored by weighted Gini. An experimental precision objective lives in
@@ -100,6 +119,16 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
     get_params/set_params come from BaseEstimator and ``clone`` works. There is
     no internal validation or automatic pruning selection here; smoothing and
     post-pruning are opt-in.
+
+    Examples
+    --------
+    >>> from sklearn.datasets import load_breast_cancer
+    >>> from bettertrees import FastDecisionTreeClassifier
+    >>> X, y = load_breast_cancer(return_X_y=True)
+    >>> tree = FastDecisionTreeClassifier(max_leaf_nodes=8).fit(X, y)
+    >>> tree.get_n_leaves()
+    8
+    >>> print(tree.export_text())  # doctest: +SKIP
     """
 
     # the cut objective and its options; only PrecisionTreeClassifier exposes them

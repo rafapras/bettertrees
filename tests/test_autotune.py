@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from sklearn.model_selection import StratifiedKFold
 from tree_invariants import check_tree_invariants
 
 from bettertrees import FastDecisionTreeClassifier, FastDecisionTreeClassifierCV
@@ -109,6 +110,69 @@ def test_cv_handles_multiclass_and_string_labels():
                                          random_state=1).fit(X, labels)
     assert set(model.predict(X)) <= set(labels)
     assert model.predict_proba(X).shape == (len(X), 3)
+
+
+def test_cv_zero_weight_rows_do_not_create_empty_validation_mass():
+    X = np.arange(100, dtype=np.float32).reshape(-1, 1)
+    y = (X[:, 0] >= 50).astype(int)
+    active, _ = next(StratifiedKFold(3, shuffle=True, random_state=0).split(X, y))
+    weights = np.zeros(len(y))
+    weights[active] = 1.0
+    params = dict(leaves_grid=(2, 4), shrinkage_grid=(1.0, 5.0), cv=3)
+    weighted = FastDecisionTreeClassifierCV(**params).fit(X, y, sample_weight=weights)
+    filtered = FastDecisionTreeClassifierCV(**params).fit(X[active], y[active])
+    assert weighted.best_params_ == filtered.best_params_
+    np.testing.assert_array_equal(weighted.cv_scores_, filtered.cv_scores_)
+    np.testing.assert_array_equal(weighted.predict_proba(X), filtered.predict_proba(X))
+
+
+def test_cv_retains_classes_present_only_in_zero_weight_rows():
+    X = np.arange(24, dtype=np.float32).reshape(-1, 1)
+    y = np.repeat(["a", "b", "inactive"], 8)
+    weights = np.r_[np.ones(16), np.zeros(8)]
+    model = FastDecisionTreeClassifierCV(leaves_grid=(2,), shrinkage_grid=(1.0,), cv=3)
+    model.fit(X, y, sample_weight=weights)
+    np.testing.assert_array_equal(model.classes_, ["a", "b", "inactive"])
+    p = model.predict_proba(X)
+    assert p.shape == (24, 3)
+    np.testing.assert_array_equal(p[:, 2], 0.0)
+    np.testing.assert_allclose(p.sum(axis=1), 1.0)
+
+
+def test_cv_rejects_insufficient_active_class_support():
+    X = np.arange(12, dtype=np.float32).reshape(-1, 1)
+    y = np.repeat([0, 1], 6)
+    weights = np.r_[np.ones(6), np.ones(2), np.zeros(4)]
+    with pytest.raises(ValueError, match=r"positive sample weight.*at least cv rows"):
+        FastDecisionTreeClassifierCV(cv=3).fit(X, y, sample_weight=weights)
+
+
+@pytest.mark.parametrize(("params", "message"), [
+    ({"leaves_grid": (2.5,)}, "leaves_grid"),
+    ({"leaves_grid": (True, 2)}, "leaves_grid"),
+    ({"leaves_grid": ()}, "leaves_grid"),
+    ({"shrinkage_grid": (np.nan, 1.0)}, "shrinkage_grid"),
+    ({"shrinkage_grid": (np.inf, 1.0)}, "shrinkage_grid"),
+    ({"shrinkage_grid": (0.0,)}, "shrinkage_grid"),
+    ({"shrinkage_grid": (True,)}, "shrinkage_grid"),
+    ({"cv": 2.5}, "cv must be an integer"),
+    ({"cv": True}, "cv must be an integer"),
+    ({"cv": 1}, "cv must be an integer"),
+])
+def test_cv_rejects_invalid_grids_and_fold_count(params, message):
+    X = np.arange(12, dtype=np.float32).reshape(-1, 1)
+    y = np.repeat([0, 1], 6)
+    with pytest.raises(ValueError, match=message):
+        FastDecisionTreeClassifierCV(**params).fit(X, y)
+
+
+@pytest.mark.parametrize("weights", [np.ones(11), np.zeros(12), [-1] + [1] * 11,
+                                      [np.nan] + [1] * 11])
+def test_cv_validates_weights_before_forming_folds(weights):
+    X = np.arange(12, dtype=np.float32).reshape(-1, 1)
+    y = np.repeat([0, 1], 6)
+    with pytest.raises(ValueError):
+        FastDecisionTreeClassifierCV().fit(X, y, sample_weight=weights)
 
 
 def test_cv_keeps_column_names_and_rejects_reordered_columns():

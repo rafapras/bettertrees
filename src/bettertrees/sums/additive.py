@@ -89,6 +89,15 @@ class AdditiveTreeBooster(TreeEditMixin, InterpretableSumMixin, ClassifierMixin,
         scikit-learn and binning conventions.
     history_ : ndarray
         Validation log-loss per round.
+
+    Examples
+    --------
+    >>> from sklearn.datasets import load_breast_cancer
+    >>> from bettertrees import AdditiveTreeBooster
+    >>> X, y = load_breast_cancer(return_X_y=True)
+    >>> model = AdditiveTreeBooster(depth=1, max_rounds=50, feature_screen="fast").fit(X, y)
+    >>> len(model.trees_) <= 50
+    True
     """
 
     def __init__(self, *, depth=2, learning_rate=0.3, max_rounds=300, lam=1.0,

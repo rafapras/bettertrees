@@ -1,238 +1,320 @@
 # bettertrees
 
-Fast decision trees and **interpretable sums of optimal trees** for binary
-classification, with a scikit-learn API.
+**Interleaved Tree Models: small, readable sums of trees for binary classification, under a
+budget of cuts.**
 
-A single CART tree spends most of a small budget copying the same effect into
-different branches (the replication problem). A logit sum of a few shallow,
-Newton-optimal trees uses the same number of cuts for separate effects, and
-stays a readable scorecard.
+Version 0.1.0 is a release candidate; the first public release is being prepared.
 
-> Status: pre-release (0.1.0.dev0). The name is provisional.
+[![License: BSD-3-Clause](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
+[![CI](https://github.com/rafapras/bettertrees/actions/workflows/ci.yml/badge.svg)](https://github.com/rafapras/bettertrees/actions/workflows/ci.yml)
+
+![AUC against the number of distinct cuts: the ITM above LightGBM and CART of the same size](https://raw.githubusercontent.com/rafapras/bettertrees/main/docs/images/frontier.png)
+
+## Why
+
+Where a decision must be explained line by line, as in credit scoring and in the biological
+sciences, the binding constraint is the size of the model: a scorecard with a few dozen bins, a
+tree with a few dozen nodes. bettertrees asks how much predictive power fits in each cut. Its main
+model, the Interleaved Tree Model (ITM), is a logit sum of a few small trees that share one budget
+of distinct cuts. You set the budget; a fixed rule sets everything else, so there is nothing to
+tune per dataset.
 
 ## Install
 
+Until the first release is published, install from a local checkout:
+
 ```bash
-pip install -e .                    # numpy, numba, scikit-learn
-pip install -e ".[lightgbm,plot]"   # LightGBM feature screening (p > 128) and plots
+pip install -e .
+pip install -e ".[all]"                 # also installs the quickstart's pandas dependency
 ```
 
-## Which model
+After publication on PyPI:
 
-**Start here:** `BudgetClassifier(max_splits=b)` picks, without tuning, the model our
-benchmark validated for a budget of `b` cuts (below), and exposes all of its
-interpretation and editing methods.
+```bash
+pip install bettertrees                 # numpy, numba, scikit-learn
+pip install "bettertrees[all]"          # + LightGBM screening, matplotlib plots, SHAP, pandas
+```
 
-| regime | model | output |
-|---|---|---|
-| **any budget, no tuning** | **`BudgetClassifier`** | `InterleavedTreeClassifier` at any budget |
-| one tree | `FastDecisionTreeClassifierCV` | a single tree; leaf count and hierarchical shrinkage chosen by CV |
-| **interpretable (4–16 cuts)** | `InterleavedTreeClassifier`, `SumOfOptimalTrees` | `logit(p) = base + Σ tree_k(x)`, a few shallow trees |
-| medium capacity (32–64 cuts) | `InterleavedTreeClassifier(learning_rate=0.3)`, `SumOfOptimalTrees` | the same sum with more trees |
-| medium capacity, counted in distinct cuts | `CompactTreeBooster` | shrunken boosting of optimal trees; identical trees merged, so re-used cuts are free |
-| free capacity | `AdditiveTreeBooster` | a long sum of optimal depth-2 trees with early stopping |
+From source: `pip install "git+https://github.com/rafapras/bettertrees"`. Python 3.10 or later.
+The Numba kernels compile on first use (about 5 to 10 seconds, once per environment) and are
+cached afterwards.
 
-- `InterleavedTreeClassifier(max_splits=b)` is the **Interleaved Tree Model (ITM)**: a
-  logit sum of small trees that grow together. At each step the best cut by Newton
-  gain, in any leaf of any tree or as a new root, enters the model and every leaf is
-  re-fitted (one backfitting sweep). The growth comes from FIGS (Tan et al. 2022),
-  the full leaf re-fit from RGF (Johnson and Zhang 2014); the budget is counted in
-  distinct cuts. The constructor's defaults are a full step (`learning_rate=1`),
-  `lam="auto"` (2b) and no cap; the validated rule is in `BudgetClassifier`.
-  `FIGSClassifier` is the same class under its older name.
-- `SumOfOptimalTrees(n_trees=K, depth=2, extra_stumps=r)` uses `3K + r` cuts:
-  each depth-2 tree is the **optimal** Newton tree on the current residual
-  (exhaustive search over bins), followed by backfitting. `search="greedy"`
-  swaps the optimal search for a greedy one (the paired control in our benchmarks).
+## Quickstart
 
-All estimators are scikit-learn compatible (`GridSearchCV`, `cross_val_score`,
-pipelines), accept NaN (missing values get their own bin and always go left),
-keep DataFrame column names (and reject a DataFrame whose columns are renamed or
-reordered at predict time), and the sums store the effective hyperparameters in
-`lam_` and `learning_rate_`. They work inside pipelines, `GridSearchCV`,
-`CalibratedClassifierCV` (also on a fitted model through `FrozenEstimator`), stacking,
-voting and bagging ensembles, `permutation_importance`, `partial_dependence` and pickle.
-
-The sums are **binary** (they raise on a multiclass target); wrap them in
-`OneVsRestClassifier` for more classes. The single tree is natively multiclass.
-
-**The no-tuning rule** (`BudgetClassifier`) for a budget of `b` cuts:
-`InterleavedTreeClassifier(max_splits=b, max_delta_step=4.0)` up to 8 cuts,
-`InterleavedTreeClassifier(max_splits=b, learning_rate=0.3)` above 8 (both with
-`lam = 2b`). The rule was evaluated from 4 to 64 cuts; above 64 the same rule is applied
-without validation in the benchmark. `CompactTreeBooster` stays a public estimator but the
-rule no longer picks it. `max_delta_step` caps each Newton step on a
-leaf; without it, a full step on a nearly pure leaf of rare-class data can diverge.
-
-## What is public, experimental and lab
-
-- **Public** (`import bettertrees`): `BudgetClassifier`, `InterleavedTreeClassifier`
-  (alias `FIGSClassifier`), `SumOfOptimalTrees`, `AdditiveTreeBooster`,
-  `CompactTreeBooster`, `LightGBMRefitClassifier` / `from_lightgbm`,
-  `FastDecisionTreeClassifier` and `FastDecisionTreeClassifierCV`.
-- **`bettertrees.experimental`** (no API guarantee): `ObliqueFIGSClassifier`, the ITM with
-  cuts on pairs of features, which gained with 8 cuts in the benchmark, and
-  `PrecisionTreeClassifier`, a tree whose cuts maximize one class's precision.
-- **`bettertrees.lab`** (research code from the benchmark: negative or inconclusive
-  results; no API or stability guarantee; not part of the public API): distillation from a
-  teacher, pair and ratio features, RuleFit, the ITM with product terms
-  (`InteractingTreeClassifier`), bagged and Rashomon structure selection
-  (`BaggedFIGSClassifier`, `RashomonFIGSClassifier`) and the multilevel tree
-  (`fit_multilevel_tree`). Kept so the results can be reproduced. The old import paths
-  (`bettertrees.experimental.distill`, `bettertrees.sums.robust`, `bettertrees.multilevel`,
-  ...) still work for the benchmark.
-
-## Examples
-
-Three notebooks in [`examples/`](examples), run by CI on simulated credit data with
-known effects (no download):
-
-- [`01_quickstart`](examples/01_quickstart.ipynb): 16 cuts as a CART tree and as a sum
-  of small trees, reading the model, scoring a row by hand, choosing the budget.
-- [`02_interpretation`](examples/02_interpretation.ipynb): rules, the waterfall of one
-  prediction, fitted effects against the true ones, JSON export.
-- [`03_editing`](examples/03_editing.ipynb): rounding a threshold, adding a business
-  rule, monotone constraints, near-equivalent cuts and the Rashomon view.
-
-## Example
+This example uses a pandas DataFrame; install the `all` extra above. For NumPy-only
+use, omit `as_frame=True` when loading the data.
 
 ```python
 from sklearn.datasets import load_breast_cancer
-from bettertrees import InterleavedTreeClassifier
+from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import train_test_split
+from bettertrees import BudgetClassifier
 
-X, y = load_breast_cancer(return_X_y=True, as_frame=True)  # a DataFrame (needs pandas) gives feature names
-model = InterleavedTreeClassifier(max_splits=6).fit(X, y)
+X, y = load_breast_cancer(return_X_y=True, as_frame=True)  # a DataFrame keeps the column names
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=0, stratify=y)
+
+model = BudgetClassifier(max_splits=8).fit(X_train, y_train)
+auc = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
+print(f"{model.n_splits_} cuts in {len(model.trees_)} trees, test AUC {auc:.3f}")
+```
+
+```
+8 cuts in 7 trees, test AUC 0.975
+```
+
+`BudgetClassifier(max_splits=b)` is the ITM with the rule of the benchmark: `lam = 2b`; up to 8
+cuts a full Newton step capped at 4 logits, above 8 cuts a step of 0.3. The rule was evaluated
+from 4 to 64 cuts. `InterleavedTreeClassifier` is the same model with every setting exposed.
+
+## Reading the model
+
+The whole model is the printout. To score a row, add the base and one value per tree, then apply
+the logistic function.
+
+```python
 print(model.explain())
 ```
 
 ```
-logit P(y = 1) = base +0.5211 + sum of 5 trees (6 cuts)
+logit P(y = 1) = base +0.5242 + sum of 7 trees (8 cuts)
 tree 1:
-  +1.5910  if worst perimeter <= 104.8
-  -0.7259  if worst perimeter > 104.8 and worst radius <= 16.32
-  -2.4027  if worst perimeter > 104.8 and worst radius > 16.32
+  +1.7784  if worst perimeter <= 108.5
+  -2.3190  if worst perimeter > 108.5
 tree 2:
-  +1.6198  if worst concave points <= 0.141
-  -1.6094  if worst concave points > 0.141
+  +1.5100  if worst concave points <= 0.1415
+  -1.8678  if worst concave points > 0.1415
 tree 3:
-  +1.6240  if worst texture <= 23.18
-  -1.0371  if worst texture > 23.18
+  +1.3691  if worst texture <= 23.07
+  -1.2124  if worst texture > 23.07
 tree 4:
-  +0.8500  if radius error <= 0.3858
-  -0.8247  if radius error > 0.3858
+  +0.8157  if mean concavity <= 0.09267
+  -0.8322  if mean concavity > 0.09267
 tree 5:
-  +0.4692  if worst smoothness <= 0.1375
-  -0.5643  if worst smoothness > 0.1375
+  +0.5433  if mean texture <= 20.15
+  -0.6155  if mean texture > 20.15
+tree 6:
+  +0.7050  if worst radius <= 15.87
+  -0.2938  if worst radius > 15.87 and worst texture <= 19.78
+  -0.9831  if worst radius > 15.87 and worst texture > 19.78
+tree 7:
+  +0.4234  if worst symmetry <= 0.2852
+  -0.4383  if worst symmetry > 0.2852
 ```
 
-To score a row, add the base and one value per tree, then apply the sigmoid.
-
-The Numba kernels compile on first use (about 5-10 s once per environment) and are cached afterwards.
-
-## Editing a model and its Rashomon view
-
-Every sum can be edited mechanically and re-estimated, and all outputs (rules,
-contributions, SHAP export) follow the edit:
+Six trees are single cuts, one additive effect each; tree 6 is an interaction, the effect of
+texture among large radii. The same model as data, per row, and as SQL:
 
 ```python
-model.prune(tree, node)                      # collapse a cut into a leaf
-model.set_cut(tree, node, "income", 50_000)  # move / replace a cut (snaps to a bin edge)
-model.split_leaf(tree, leaf, "debt", 2.5)   # add a cut by hand
-model.add_stump("age", 65)                   # add a rule as a new tree
-model.drop_tree(k); model.merge_duplicates()
-model.set_leaf_value(tree, leaf, 0.0)        # business override
-model.refit_leaves(X, y)                     # re-estimate the leaves for the new structure
-model.refit_leaves(X, y, trees=[0, 3])       # partial refit: the other trees stay frozen
-model.refit_leaves(X, y, monotone={"income": -1, "age": +1})  # monotone constraints
-model.monotone_violations("income", increasing=False)         # exact check (empty = ok)
+model.rules()[:2]                         # [(tree, conditions, logit value)] per leaf
+# [(0, ['worst perimeter <= 108.5'], 1.7783520345848123),
+#  (0, ['worst perimeter > 108.5'], -2.3190229737929564)]
+
+model.predict_contributions(X_test[:1])   # one column per tree; base + row sum = logit
+# [[-2.31902297 -1.86779044 -1.21240149 -0.8322431  -0.61554356 -0.98310833 -0.43829661]]
+
+print(model.to_sql(table="patients"))     # the model as one query, no Python needed to score
+```
+
+```sql
+-- logit P(y = 1) = base + sum of 7 tree columns (8 cuts); p = 1 / (1 + EXP(-score))
+WITH contributions AS (
+  SELECT *,
+    CASE  -- tree 1
+      WHEN "worst perimeter" <= 108.5 THEN 1.77835
+      ELSE -2.31902
+    END AS "t1_worst perimeter",
+    ...
+    CASE  -- tree 6
+      WHEN "worst radius" <= 15.870001 THEN 0.704956
+      WHEN "worst radius" > 15.870001 AND "worst texture" <= 19.779999 THEN -0.293802
+      ELSE -0.983108
+    END AS "t6_worst radius_worst texture",
+    ...
+  FROM patients
+), scored AS (
+  SELECT *, 0.524249  -- base
+    + "t1_worst perimeter"
+    ...
+    AS score
+  FROM contributions
+)
+SELECT *, 1.0 / (1.0 + EXP(-score)) AS p
+FROM scored;
+```
+
+Also on every sum: `to_dict()` (JSON), `get_trees()` (arrays, as scikit-learn's `tree_`),
+`export_text()`, `plot_contributions(x)` (waterfall of one prediction), `plot_shapes()` (shape
+functions of the single-feature trees) and `to_shap_model()` (exact TreeSHAP with
+`shap.TreeExplainer`).
+
+For deployment, `to_dict()` stores exact bins and tree arrays alongside the rounded
+rules. The [export guide](https://github.com/rafapras/bettertrees/blob/main/docs/export.md) includes an independent evaluator and the
+input precision and missing-value conventions. SQL printouts round leaf values to
+`precision` significant digits (6 by default); validate the generated query against
+the fitted model on deployment inputs.
+
+## Results
+
+From the benchmark of the paper (in preparation): 56 binary classification datasets from
+TabArena, the AutoML Benchmark, the suite of Grinsztajn et al. and Kaggle, with 10 thousand to
+2.2 million rows. Three evaluation partitions per dataset up to 100 thousand rows, one 80/20
+holdout above; the partition used to choose the rule is excluded. Every rival is held to the same
+budget in its own unit: CART is grown to b + 1 leaves, LightGBM gets K trees of l leaves with
+K(l − 1) ≤ b, RGF is refitted to exactly b cuts.
+
+Mean AUC difference in points (ITM minus rival; one point = 0.01 AUC), with the number of datasets
+on which the ITM has the higher AUC. Positive = ITM better.
+
+| rival (same budget unless noted) | 4 cuts | 16 cuts | 32 cuts | 64 cuts |
+|---|---|---|---|---|
+| CART (scikit-learn, tuned) | +1.89 (50/56) | +2.37 (52/56) | +2.30 (53/56) | +1.80 (25/28) |
+| LightGBM, tuned with 16 trials | +0.51 (44/56) | +0.57 (51/56) | +0.32 (20/28) | +0.02 (16/28) |
+| LightGBM, tuned with 100 trials | +0.64 (38/49) | +0.45 (43/49) | +0.59 (26/28) | — |
+| RGF, tuned | −0.18 (28/56) | −0.03 (23/56) | +0.15 (31/56) | — |
+| WoE scorecard (no size limit) | −3.95 (4/56) | +0.41 (37/56) | +1.43 (50/56) | +1.98 (24/28) |
+
+Cells with 28 datasets cover only 10–100 thousand rows (64 cuts, and LightGBM with 16 trials at
+32 cuts) or only above 100 thousand rows (LightGBM with 100 trials at 32 cuts); LightGBM with 100
+trials was not run on the 7 datasets of 50–100 thousand rows. "—": not run.
+
+In short: the ITM beats CART of the same size by about 2 AUC points at every budget, beats
+LightGBM of the same size from 4 to 32 cuts and ties it at 64, and ties a tuned RGF, its closest
+ancestor (with its library defaults, RGF is 2.5 to 3.6 points behind). Dataset by dataset at 16
+cuts:
+
+![ITM minus CART and minus LightGBM tuned with 100 trials, per dataset, at 16 cuts](https://raw.githubusercontent.com/rafapras/bettertrees/main/docs/images/scoreboard.png)
+
+Against a weight-of-evidence scorecard (up to 10 bins per variable, no size limit; a median of
+157 steps, one step per bin boundary), the ITM loses with 4 and 8 cuts and passes the scorecard
+at 16:
+
+![ITM minus a WoE scorecard by model size](https://raw.githubusercontent.com/rafapras/bettertrees/main/docs/images/scorecard.png)
+
+**Cost.** The ITM is cheaper to obtain because it is not tuned. At 16 cuts on 10–50 thousand
+rows it takes a median of 0.11 seconds against 5.26 seconds for LightGBM tuned with 100 trials
+(median per-dataset ratio 47); above 100 thousand rows the ratio is 2.9 (7.7 against 22.3
+seconds), because the tuned control searches on a 100 thousand-row sample.
+
+## How it works
+
+The ITM scores a row as `logit P(y = 1) = base + T_1(x) + ... + T_K(x)`, where each `T_k` is a
+small tree with values in log-odds. Growth starts with no trees. At each step every leaf of every
+tree, and the root of a new tree, is a candidate; the cut with the largest Newton gain
+`G_l²/(H_l + λ) + G_r²/(H_r + λ) − G²/(H + λ)`, at the margin of the other trees, is added; its
+two leaves take a Newton step `−G/(H + λ)`, and one sweep then refits every leaf of every tree.
+Growth stops at b distinct (feature, threshold) pairs. The growth across trees comes from FIGS
+(Tan et al.), the refit of all leaves from RGF (Johnson and Zhang); the ITM replaces FIGS's
+mean-residual leaves with Newton steps in log-odds, refits after every cut, counts the budget in
+distinct cuts and replaces tuning with a fixed rule. Features are binned into 32 quantile bins;
+missing values get a bin of their own and always go left.
+
+## Limitations
+
+- **Binary classification only** for the sums (they raise on a multiclass target; wrap them in
+  `OneVsRestClassifier`). The single trees are multiclass.
+- **Evaluated from 4 to 64 cuts.** Above 64 the rule is applied without validation; at 64 the ITM
+  only ties LightGBM.
+- **Not faster per fit.** One ITM fit is slower than one LightGBM fit of the same size (16 cuts,
+  50 features, one thread: 0.15, 1.38 and 15 seconds at 10 thousand, 100 thousand and one
+  million rows, against 0.05, 0.60 and 2.62 for LightGBM). The time saved comes from not tuning.
+- **Small budgets and many weak effects.** With 4 and 8 cuts a WoE scorecard of about 150 steps
+  has the higher AUC; where many variables each carry a weak monotone effect, many cheap bins beat
+  a few cuts.
+- **Deep interactions.** Where the target is itself a deep interaction (in the benchmark,
+  `electricity` and the hierarchical `pol`), a single tree or boosting is the right shape and the
+  sum gains little over CART.
+- **The rule** was chosen among about fifty variants on development partitions of the same pool
+  of datasets, and the step cap at 4 and 8 cuts was added after the first evaluation results. It
+  has not been validated on datasets outside the project.
+- **Ordered numeric inputs.** Thresholds assume that the order of a feature's values means
+  something; integer-coded categories with thousands of levels are better served by native
+  categorical splits.
+
+## What else is in the package
+
+| estimator | what it is |
+|---|---|
+| `BudgetClassifier` | the ITM with the fixed rule per budget; start here |
+| `InterleavedTreeClassifier` | the ITM with every setting exposed; `FIGSClassifier` is an alias |
+| `SumOfOptimalTrees` | a logit sum of a few optimal (exhaustive search) trees of depth 1–3, with backfitting |
+| `CompactTreeBooster` | shrunken boosting of optimal trees, identical trees merged, budget in distinct cuts |
+| `AdditiveTreeBooster` | a long sum of optimal depth-1/2 trees with early stopping (no budget) |
+| `LightGBMRefitClassifier`, `from_lightgbm` | a LightGBM model imported as an editable sum (exact predictions), with its leaves refitted jointly |
+| `FastDecisionTreeClassifier`, `FastDecisionTreeClassifierCV` | a single CART-style tree (Gini), multiclass; the CV version chooses the leaf count and hierarchical shrinkage |
+
+`bettertrees.sums` also exposes `TreeSum` (the editable sum returned by `from_lightgbm`),
+`SmallTree` (one tree of a sum, in `trees_`) and `screen_features` (bootstrap screening of
+single cuts on a residual).
+
+All estimators follow the scikit-learn API (pipelines, `GridSearchCV`, `CalibratedClassifierCV`,
+`permutation_importance`, `partial_dependence`, pickle), accept NaN and `sample_weight`, and keep
+DataFrame column names.
+
+`from_lightgbm` supports binary models with numerical splits, at most 254 distinct
+thresholds per feature, and missing values routed left. It rejects categorical splits,
+`zero_as_missing` and NaN routed right, whose semantics cannot be preserved.
+Rows with zero sample weight are excluded from training and binning; positive weights
+change the objective mass and do not generally mean repeating rows, especially with
+row-based validation or LightGBM binning.
+
+**Editing.** Every sum can be edited and re-estimated, and all outputs follow the edit:
+
+```python
+model.set_cut(tree, node, "income", 50_000)   # move or replace a cut (snaps to a bin edge)
+model.split_leaf(tree, leaf, "debt", 2.5)     # add a cut by hand
+model.add_stump("age", 65)                    # add a rule as a new tree
+model.prune(tree, node)                       # collapse a cut into a leaf
+model.refit_leaves(X, y, monotone={"income": -1})               # refit, with monotone constraints
 model.cut_alternatives(X_val, y_val, tree, node, epsilon=0.01)  # near-equivalent cuts
 ```
 
-A LightGBM model becomes an editable sum with `from_lightgbm(lgbm, X, y)` (exact
-predictions); `LightGBMRefitClassifier` also refits its leaves jointly, which beats the
-same LightGBM at 4-64 cuts in our benchmark.
+**Experimental and lab.**
 
-`RashomonFIGSClassifier` (in `bettertrees.lab`) runs a local search that mutates one cut at a time and keeps
-every structure it visits within `epsilon` of the best validation loss. That is a
-**sample** of the Rashomon set (the structures the search reached), not the whole set:
-`rashomon_models()` returns them as estimators and `rashomon_importance(X)` the range of
-each feature's importance across them. `BaggedFIGSClassifier` picks cuts by a bootstrap
-vote.
+- `bettertrees.experimental` (no API stability guarantee): `ObliqueFIGSClassifier`, the ITM with
+  cuts on linear combinations of two features, which helped at 4 and 8 cuts and added little at
+  16 and 32; `PrecisionTreeClassifier`, a tree whose cuts maximize one class's precision.
+- `bettertrees.lab` is research code from the benchmark with negative or inconclusive results:
+  product terms between trees, bagged and Rashomon structure selection, distillation from a
+  teacher, pair and ratio features, RuleFit, and a multilevel tree of optimal depth-2 blocks.
+  **It is not part of the public API and carries no stability guarantee**; it is kept so that the
+  results can be reproduced.
 
-## Interpretation API
+**Examples.** Three notebooks in [`examples/`](https://github.com/rafapras/bettertrees/tree/main/examples), run by CI on simulated credit data
+with known effects: [`01_quickstart`](https://github.com/rafapras/bettertrees/blob/main/examples/01_quickstart.ipynb),
+[`02_interpretation`](https://github.com/rafapras/bettertrees/blob/main/examples/02_interpretation.ipynb) and
+[`03_editing`](https://github.com/rafapras/bettertrees/blob/main/examples/03_editing.ipynb).
 
-Every sum exposes the same output:
-
-```python
-model.rules()                   # [(tree, conditions, logit value)] per leaf
-model.to_dict()                 # the same as JSON (deploy without the package)
-model.predict_contributions(X)  # (n, n_trees); base + row sum = decision_function
-model.plot_contributions(x)     # waterfall of one prediction
-model.plot_shapes()             # shape functions of the single-feature trees
-model.get_trees()               # each tree as arrays (like sklearn's tree_), real thresholds
-print(model.export_text())      # the trees drawn as text
-model.to_shap_model()           # exact TreeSHAP via shap.TreeExplainer
-```
-
-The single tree (`FastDecisionTreeClassifier` and its CV version) has
-`export_text()`, with the leaf probabilities `predict_proba` returns.
-
-## Benchmark summary
-
-> Numbers to be updated from the paper: the table below comes from earlier runs, before the
-> Interleaved Tree Model was named, and will be replaced by the paper's results.
-
-Binary classification, OpenML/TabArena suites plus four Kaggle sets; 28 bases with
-10k–100k rows (splits not used in development) and 28 with more than 100k (one
-holdout each). Paired by base, median change, Wilcoxon test; log-loss change is
-relative, AUC change in points. "No tuning" is the rule above; the controls are tuned
-by Optuna (learning rate, λ, leaves per tree, minimum leaf) under the same cut budget.
-
-| claim | result |
-|---|---|
-| No tuning vs LightGBM with ≤ b cuts, shape tuned, 10k–50k rows (4 / 16 / 128 cuts) | −2.7% / −2.2% log-loss (20/21, 18/21 bases, p ≤ 2e-5), +0.5 / +0.4 AUC points; tie at 128 |
-| The same, 50k–100k rows | −0.9% / −0.9% / −0.9% log-loss (7 bases; significant at 4 cuts) |
-| The same, more than 100k rows | −1.0% / **−1.6%** / −0.5% log-loss (25/28, **28/28**, 24/28; p ≤ 0.002), +0.4 / **+0.6** / +0.3 AUC points |
-| No tuning vs a well-configured CART with the same cuts (scikit-learn tuned, or rpart's probability tree) | +1.1 to +2.5 AUC points at 4–128 cuts in every size group (e.g. +2.2, 27/29 bases above 100k at 16 cuts; p < 0.05 everywhere) |
-| Where that gap comes from (63 tasks, CART's own cuts refitted as a sum vs FIGS's cuts) | at 16 cuts: 54% from arranging the same cuts as a sum, 35% from choosing better cuts, 11% from interactions inside FIGS's trees (79 / 34 / −12% at 4 cuts) |
-| Optimal vs greedy search inside the same sum of depth-2 trees, 16 cuts | −0.9% log-loss (18/21 bases), +0.2 AUC points; the greedy version only ties LightGBM |
-| Our FIGS (logit leaves, backfitting) vs FIGS from imodels, 32–128 cuts | −1% to −5% log-loss (7/7 bases of 50k–100k) |
-
-Where it does not help: at 128 cuts it ties LightGBM; hierarchical targets (`pol`) and
-high-order interactions (`electricity`), where one deep tree or boosting is the right
-shape; on some bases a well-tuned CART is as good (e.g. Medical-Appointment-No-Shows
-at 16 cuts). With very few cuts, FIGS's greedy choice can spend all of them on one deep
-tree when the positive class is rare and concentrated in a subgroup (BAF fraud, 4 cuts:
-AUC 0.717 against 0.785 for four stumps); across 63 tasks FIGS and a sum of stumps
-tie at 4 cuts and FIGS is better at 8. The default rpart (`method="class"`) prunes to zero cuts on rare-class data;
-comparisons against it overstate any method's gain, so we do not report them.
-
-Earlier development runs (20 datasets, not re-run on the final splits): the additive
-booster at free capacity is within +1% median log-loss of tuned LightGBM / XGBoost /
-CatBoost at 15–50× less time including tuning, and the single-tree engine is about
-3× faster than scikit-learn for n ≥ 10k.
-
-## Credits and inspirations
-
-bettertrees stands on these ideas; what we took from each:
+## Credits
 
 | work | what bettertrees borrows |
 |---|---|
-| **FIGS** — Tan, Singh, Nasseri, Agarwal, et al. "Fast Interpretable Greedy-Tree Sums." arXiv:2201.11931 (2022); [imodels](https://github.com/csinva/imodels) | The sum-of-trees model that grows several trees at once, one cut at a time. `InterleavedTreeClassifier` (the ITM) re-implements it with Newton/logit leaves and backfitting. |
-| **Hierarchical Shrinkage** — Agarwal, Tan, Ronen, Singh, Yu. *ICML* (2022) | Leaf values shrunk toward their ancestors; the leaf model of the single tree and of its CV. |
-| **XGBoost** — Chen, Guestrin. *KDD* (2016) | The second-order (Newton) gain `G²/(H+λ)` and leaf value `-G/(H+λ)` used by every sum. |
-| **LightGBM** — Ke et al. *NeurIPS* (2017); scikit-learn's HistGradientBoosting | Quantile histograms (≤ 255 bins, missing values in their own bin), the (optional) histogram subtraction trick and best-first, leaf-wise growth. |
-| **MurTree** — Demirović et al. *JMLR* (2022); **ConTree** — Briţa, van der Linden, Demirović. *AAAI* (2025); [pycontree](https://github.com/ConSol-Lab/contree) | Specialized exhaustive search for depth-two trees, the building block of `SumOfOptimalTrees` (here on bins and with the log-loss Newton gain instead of misclassification). ConTree is also our optimal-tree baseline. |
-| **Optimal or greedy?** — van der Linden, Vos, de Weerdt, Verwer, Demirović. *TMLR* (2024) | The finding that optimizing the target objective directly is what makes optimal trees win, and the size–error curve as the evaluation. |
-| **GA2M / EBM** — Lou, Caruana, Gehrke, Hooker. *KDD* (2013); Nori et al. InterpretML (2019) | Additive models with pairwise interactions and shape-function plots (`AdditiveTreeBooster`, `plot_shapes`). |
-| **CART** — Breiman, Friedman, Olshen, Stone (1984) | The tree engine, cost-complexity pruning and the replication problem (Pagallo & Haussler, *Machine Learning*, 1990) that motivates sums. |
-| **SHAP / TreeSHAP** — Lundberg et al. *Nature Machine Intelligence* (2020) | `to_shap_model()` exports the sums for exact TreeSHAP. |
-| **scikit-learn** — Pedregosa et al. *JMLR* (2011) | The estimator API and its compatibility checks. |
-| **Numba** — Lam, Pitrou, Seibert (2015) | All kernels. |
+| **FIGS**: Tan, Singh, Nasseri, Agarwal, et al. "Fast Interpretable Greedy-Tree Sums." arXiv:2201.11931 (2022); [imodels](https://github.com/csinva/imodels) | Growth across trees: the next cut may deepen any leaf of any tree or start a new one. |
+| **RGF**: Johnson, Zhang. "Learning Nonlinear Functions Using Regularized Greedy Forest." *IEEE TPAMI* (2014) | The refit of all leaf values as the forest grows. |
+| **XGBoost**: Chen, Guestrin. *KDD* (2016) | The second-order gain `G²/(H+λ)` and leaf value `−G/(H+λ)`. |
+| **LightGBM**: Ke et al. *NeurIPS* (2017); scikit-learn's HistGradientBoosting | Quantile histograms with a bin for missing values; best-first growth. |
+| **Hierarchical Shrinkage**: Agarwal, Tan, Ronen, Singh, Yu. *ICML* (2022) | Leaf values shrunk toward their ancestors in the single tree. |
+| **MurTree**: Demirović et al. *JMLR* (2022); **ConTree**: Briţa, van der Linden, Demirović. *AAAI* (2025) | The depth-two solver behind `SumOfOptimalTrees`, here on bins with the Newton gain. |
+| **GA2M / EBM**: Lou, Caruana, Gehrke, Hooker. *KDD* (2013); Nori et al. InterpretML (2019) | Additive models with pairwise interactions and shape plots. |
+| **CART**: Breiman, Friedman, Olshen, Stone (1984); Pagallo and Haussler, *Machine Learning* (1990) | The tree engine, cost-complexity pruning and the replication problem that motivates sums. |
+| **SHAP / TreeSHAP**: Lundberg et al. *Nature Machine Intelligence* (2020) | `to_shap_model()` for exact TreeSHAP. |
+| **scikit-learn** (Pedregosa et al., *JMLR* 2011) and **Numba** (Lam, Pitrou, Seibert, 2015) | The estimator API; all kernels. |
 
-Related and next: SPLIT (Babbar, McTavish, Rudin, Seltzer, *ICML* 2025) for lookahead
-near-optimal trees and TreeFARMS (Xin et al., *NeurIPS* 2022) for Rashomon sets.
+## Citation
+
+A paper on the ITM and the benchmark is in preparation. Until it is out, please cite the software
+([`CITATION.cff`](https://github.com/rafapras/bettertrees/blob/main/CITATION.cff)):
+
+```bibtex
+@software{bettertrees,
+  title   = {bettertrees: Interleaved Tree Models for binary classification under a budget of cuts},
+  author  = {rafapras},
+  year    = {2026},
+  version = {0.1.0},
+  url     = {https://github.com/rafapras/bettertrees}
+}
+```
 
 ## License
 
-BSD-3-Clause.
+BSD-3-Clause; see [`LICENSE`](https://github.com/rafapras/bettertrees/blob/main/LICENSE).

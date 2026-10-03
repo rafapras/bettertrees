@@ -28,20 +28,39 @@ def as_weights(sample_weight, n):
     w = np.ascontiguousarray(np.asarray(sample_weight, dtype=np.float64))
     if w.shape != (n,) or not np.isfinite(w).all() or (w < 0).any():
         raise ValueError("sample_weight must be finite, non-negative and aligned with X.")
+    _weight_total(w)
     return w
+
+
+def _weight_total(w):
+    with np.errstate(over="ignore"):
+        total = w.sum()
+    if not np.isfinite(total):
+        raise ValueError("The sum of sample_weight exceeds the float64 range.")
+    if total <= 0:
+        raise ValueError("sample_weight sums to zero.")
+    return total
+
+
+def _cast_input(X, dtype):
+    with np.errstate(over="ignore", invalid="ignore"):
+        out = np.ascontiguousarray(X, dtype=dtype)
+    if np.isinf(out).any():
+        raise ValueError(f"X contains infinity or values outside the {np.dtype(dtype).name} range.")
+    return out
 
 
 def binned(X, max_bins):
     """(Xb uint8, edges, nb int64) with bin 0 = NaN and nb[j] = len(edges[j]) + 2."""
-    X32 = np.ascontiguousarray(X, dtype=np.float32)
+    X32 = _cast_input(X, np.float32)
     edges = fit_bin_edges(X32, max_bins)
     Xb = transform_bins_row_major(X32, edges)
     nb = np.array([len(e) + 2 for e in edges], dtype=np.int64)
     return Xb, edges, nb
 
 
-def rebin(X, edges):
-    return transform_bins_row_major(np.ascontiguousarray(X, dtype=np.float32), edges)
+def rebin(X, edges, *, dtype=np.float32):
+    return transform_bins_row_major(_cast_input(X, dtype), edges)
 
 
 def bin_threshold(edges_j, t):
@@ -138,8 +157,11 @@ def fit_inputs(est, X, y, sample_weight=None, y_soft=None):
         raise ValueError("Binary classification needs two classes; y has only one class.")
     target = encoded.astype(np.float64) if y_soft is None else as_target(y_soft, len(X))
     w = _check_sample_weight(sample_weight, X, dtype=np.float64, ensure_non_negative=True)
-    if not w.sum() > 0:
-        raise ValueError("sample_weight sums to zero.")
+    _weight_total(w)
+    active = w > 0
+    if not active.all():
+        X, target, w = X[active], target[active], w[active]
+    est.input_dtype_ = "float32"
     est.nan_features_ = np.isnan(X).any(axis=0)
     return X, classes, target, np.ascontiguousarray(w)
 

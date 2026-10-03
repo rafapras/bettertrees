@@ -19,14 +19,42 @@ def screen_features(X, y, margin=None, sample_weight=None, *, n_boot=30,
                     random_state=0):
     """Score each feature by its best single cut on the residual of ``margin``.
 
-    ``margin`` is the margin (logit) of a base model; ``None`` uses the
-    constant. The bootstrap uses Poisson(1) weights over the same bins.
+    Parameters
+    ----------
+    X : array-like of shape (n_samples, n_features)
+        Numeric features (NaN allowed).
+    y : array-like of shape (n_samples,)
+        Binary labels (0/1).
+    margin : array-like of shape (n_samples,) or None, default=None
+        The margin (logit) of a base model, e.g. ``model.decision_function(X)``;
+        None uses the constant base rate.
+    sample_weight : array-like of shape (n_samples,) or None, default=None
+        Row weights.
+    n_boot : int, default=30
+        Bootstrap replicates (Poisson(1) weights over the same bins).
+    max_bins, lam, min_weight
+        Binning and Newton gain, as in the sums.
+    top_k : int, default=5
+        The k of ``top_k_freq``.
+    random_state : int, default=0
+        Seed of the bootstrap.
 
-    Returns a dict of per-feature arrays: ``gain`` and ``threshold`` on the full
-    sample; ``rank_mean`` (mean bootstrap rank, 1 = best), ``top_k_freq``
-    (share of replicates in the top k) and ``threshold_iqr`` (IQR of the
-    threshold across replicates: an unstable threshold is a cut that does not
-    hold up).
+    Returns
+    -------
+    dict of ndarray of shape (n_features,)
+        ``gain`` and ``threshold`` on the full sample; ``rank_mean`` (mean bootstrap
+        rank, 1 = best), ``top_k_freq`` (share of replicates in the top k) and
+        ``threshold_iqr`` (IQR of the threshold across replicates: an unstable
+        threshold is a cut that does not hold up).
+
+    Examples
+    --------
+    >>> from sklearn.datasets import load_breast_cancer
+    >>> from bettertrees.sums import screen_features
+    >>> X, y = load_breast_cancer(return_X_y=True)
+    >>> scores = screen_features(X, y, n_boot=5)
+    >>> scores["gain"].shape
+    (30,)
     """
     X = as_float_matrix(X)
     n, p = X.shape

@@ -1,4 +1,4 @@
-"""One estimator per cut budget, no tuning: the rule the benchmark validated."""
+"""One estimator per cut budget, no tuning: the fixed rule of the benchmark."""
 
 from numbers import Integral
 
@@ -9,29 +9,28 @@ from .smalltrees import InterleavedTreeClassifier
 
 
 class BudgetClassifier(ClassifierMixin, BaseEstimator):
-    """The best sum of trees for a budget of ``max_splits`` cuts, without tuning.
+    """The Interleaved Tree Model for a budget of ``max_splits`` cuts, without tuning.
 
-    The rule our benchmark validated (lam = 2b, the ``InterleavedTreeClassifier`` default,
-    in both ITM regimes) (binary classification, 10k to over 1M rows,
-    against LightGBM and XGBoost tuned under the same budget):
+    A fixed rule sets everything but the budget b (binary classification). It is the
+    rule of the benchmark (56 datasets of 10 thousand to 2.2 million rows), where it was
+    evaluated from 4 to 64 cuts:
 
     - up to 8 cuts: ``InterleavedTreeClassifier(max_splits=b, max_delta_step=4.0)``, full
       Newton steps capped at 4 logits (without the cap, a nearly pure leaf of
       rare-class data can diverge);
     - above 8 cuts: ``InterleavedTreeClassifier(max_splits=b, learning_rate=0.3)``.
 
-    The rule was evaluated from 4 to 64 cuts; above 64 the same rule is applied without
-    validation in the benchmark. ``CompactTreeBooster`` is a public estimator of its own but
-    the rule no longer chooses it.
+    Both use ``lam = 2b`` (the ``InterleavedTreeClassifier`` default). Above 64 cuts the
+    same rule is applied, without validation.
 
     The fitted model is ``model_``; its interpretation and editing methods
-    (``explain``, ``rules``, ``predict_contributions``, ``prune``, ...) are
+    (``explain``, ``rules``, ``to_sql``, ``predict_contributions``, ``prune``, ...) are
     available directly on this estimator.
 
     Parameters
     ----------
     max_splits : int >= 1, default=16
-        The cut budget.
+        The cut budget, in distinct cuts.
 
     Attributes
     ----------
@@ -39,6 +38,21 @@ class BudgetClassifier(ClassifierMixin, BaseEstimator):
         The fitted model the rule chose.
     classes_, n_features_in_, feature_names_in_
         As in the chosen model.
+
+    See Also
+    --------
+    InterleavedTreeClassifier : the model, with every setting exposed.
+
+    Examples
+    --------
+    >>> from sklearn.datasets import load_breast_cancer
+    >>> from bettertrees import BudgetClassifier
+    >>> X, y = load_breast_cancer(return_X_y=True)
+    >>> model = BudgetClassifier(max_splits=8).fit(X, y)
+    >>> model.model_.max_delta_step, model.model_.learning_rate
+    (4.0, 1.0)
+    >>> BudgetClassifier(max_splits=16).fit(X, y).model_.learning_rate
+    0.3
     """
 
     def __init__(self, max_splits=16):

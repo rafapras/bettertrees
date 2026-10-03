@@ -153,6 +153,7 @@ class InterpretableSumMixin:
         "present"), ``children_left``/``children_right`` (-1 at leaves) and
         ``value`` (logit contribution; only leaves enter the sum).
         ``logit(p) = base_margin_ + Σ_k value_k[leaf of x in tree k]``.
+        Convert inputs to each tree's ``input_dtype`` before comparing thresholds.
         """
         check_is_fitted(self, "base_margin_")
         names = self._names(feature_names)
@@ -162,6 +163,7 @@ class InterpretableSumMixin:
             thr = np.array([bin_threshold(self.bin_edges_[f], t) if f >= 0 else np.nan
                             for f, t in zip(tree.feature, tree.threshold)])
             out.append(dict(
+                input_dtype=np.dtype(getattr(self, "input_dtype_", np.float32)).name,
                 feature=feat,
                 feature_name=[None if f < 0 else (names[f] if names else f"x{f}")
                               for f in feat],
@@ -191,7 +193,8 @@ class InterpretableSumMixin:
                 thresholds=np.where(leaf, 0.0, t["threshold"]),
                 values=np.where(leaf, t["value"], 0.0).reshape(-1, 1),
                 node_sample_weight=np.ones(len(leaf))))
-        return dict(trees=trees, base_offset=float(self.base_margin_))
+        return dict(trees=trees, base_offset=float(self.base_margin_),
+                    input_dtype=np.dtype(getattr(self, "input_dtype_", np.float32)).type)
 
     def export_text(self, feature_names=None, precision=4):
         """The trees drawn as text (in the style of ``sklearn.tree.export_text``)."""
@@ -234,7 +237,8 @@ class InterpretableSumMixin:
     def predict_contributions(self, X):
         """(n_samples, n_trees) matrix of logit contributions; base + row sum
         = ``decision_function(X)``."""
-        Xb = rebin(predict_input(self, X, "base_margin_"), self.bin_edges_)
+        Xb = rebin(predict_input(self, X, "base_margin_"), self.bin_edges_,
+                   dtype=getattr(self, "input_dtype_", np.float32))
         trees = self._explain_trees()
         out = np.zeros((len(Xb), len(trees)))
         for k, tree in enumerate(trees):
@@ -242,14 +246,31 @@ class InterpretableSumMixin:
         return out
 
     def to_dict(self, feature_names=None, precision=6):
-        """The whole model as a JSON-ready structure (base + rule trees)."""
+        """JSON-ready model (schema 1), with exact bins and tree arrays.
+
+        ``rules`` are rounded for display only. Execute ``threshold_bin`` against
+        ``bin_edges`` after conversion to ``input_dtype``; NaN has bin zero.
+        See ``docs/export.md`` and the independent ``tools/predict_export.py``.
+        """
         check_is_fitted(self, "base_margin_")
-        trees = {}
+        rules = {}
         for k, conds, v in self.rules(feature_names, precision):
-            trees.setdefault(k, []).append(dict(conditions=conds, value=v))
-        return dict(link="logit", base_margin=float(self.base_margin_),
+            rules.setdefault(k, []).append(dict(conditions=conds, value=v))
+        trees = [dict(feature=np.asarray(t.feature, dtype=int).tolist(),
+                      threshold_bin=np.asarray(t.threshold, dtype=int).tolist(),
+                      children_left=np.asarray(t.left, dtype=int).tolist(),
+                      children_right=np.asarray(t.right, dtype=int).tolist(),
+                      value=np.asarray(t.value, dtype=float).tolist(),
+                      rules=rules.get(k, []))
+                 for k, t in enumerate(self._explain_trees())]
+        fill = getattr(self, "nan_fill_", None)
+        return dict(schema_version=1, link="logit", base_margin=float(self.base_margin_),
+                    input_dtype=np.dtype(getattr(self, "input_dtype_", np.float32)).name,
+                    n_features=int(self.n_features_in_), feature_names=self._names(feature_names),
+                    bin_edges=[np.asarray(e, dtype=float).tolist() for e in self.bin_edges_],
+                    missing_values="nan", nan_fill=None if fill is None else fill.tolist(),
                     classes=[c.item() if hasattr(c, "item") else c for c in self.classes_],
-                    trees=[dict(rules=trees[k]) for k in sorted(trees)])
+                    trees=trees)
 
     def to_sql(self, table="input", feature_names=None, precision=6, keep_columns=True):
         """The model as one readable SQL query (additive ``CASE WHEN``, one column per tree).
@@ -432,7 +453,7 @@ class InterpretableSumMixin:
         x = predict_input(self, x, "base_margin_")
         trees = self._explain_trees()
         names, nan = self._names(feature_names), getattr(self, "nan_features_", None)
-        Xb = rebin(x, self.bin_edges_)
+        Xb = rebin(x, self.bin_edges_, dtype=getattr(self, "input_dtype_", np.float32))
         labels = []
         for tree in trees:
             leaf = int(tree.leaf_ids(Xb)[0])

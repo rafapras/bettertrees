@@ -187,7 +187,10 @@ def test_additive_booster_depth2_captures_interaction():
 
 def test_crossfit_teacher_is_out_of_fold():
     X, y = _additive_interaction(4, n=1500)
-    a = crossfit_teacher(X, y, n_splits=3, params=dict(n_estimators=60))
+    a = crossfit_teacher(X, y, n_splits=3, params=dict(n_estimators=60), return_models=True)
+    assert len(a["models"]) == 3
+    assert all(model.evals_result_["valid_0"]["binary_logloss"] for model in a["models"])
+    assert all(1 <= iteration <= 60 for iteration in a["best_iterations"])
     fold0 = a["fold"] == 0
     flipped = y.copy()
     flipped[fold0] = 1 - flipped[fold0]

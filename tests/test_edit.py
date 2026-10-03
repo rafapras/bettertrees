@@ -92,6 +92,24 @@ def test_merge_duplicates_keeps_predictions():
     _consistent(m, X)
 
 
+@pytest.mark.parametrize("second_order", [(2, 1), (1, 2)])
+def test_merge_duplicates_matches_leaf_paths_after_manual_splits(second_order):
+    X = np.array([[-2., -2.], [-2., 2.], [2., -2.], [2., 2.]])
+    y = np.array([0, 1, 0, 1])
+    m = FIGSClassifier(max_splits=0).fit(X, y)
+    for order in [(2, 1), second_order]:
+        k, _ = m.add_stump(0, 0.)
+        for leaf in order:
+            m.split_leaf(k, leaf, 1, 0.)
+        for leaf, value in zip(m.trees_[k].leaves, [10., 20., 30., 40.]):
+            m.set_leaf_value(k, leaf, value)
+    queries = np.vstack([X, [np.nan, -2.], [2., np.nan]])
+    before = m.decision_function(queries)
+    assert m.merge_duplicates() == 1
+    np.testing.assert_array_equal(m.decision_function(queries), before)
+    _consistent(m, X)
+
+
 def _clone_tree(t):
     from bettertrees.sums import SmallTree
     return SmallTree(list(t.feature), list(t.threshold), list(t.left), list(t.right),

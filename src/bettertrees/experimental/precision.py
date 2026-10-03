@@ -24,6 +24,19 @@ class PrecisionTreeClassifier(FastDecisionTreeClassifier):
     Other parameters
         As in ``FastDecisionTreeClassifier`` (``ccp_alpha`` must stay 0 and
         ``gain_tolerance`` does not apply).
+
+    Attributes
+    ----------
+    As in ``FastDecisionTreeClassifier``.
+
+    Examples
+    --------
+    >>> from sklearn.datasets import load_breast_cancer
+    >>> from bettertrees.experimental import PrecisionTreeClassifier
+    >>> X, y = load_breast_cancer(return_X_y=True)
+    >>> tree = PrecisionTreeClassifier(positive_class=1, max_depth=2).fit(X, y)
+    >>> tree.get_depth() <= 2
+    True
     """
 
     objective = "precision"

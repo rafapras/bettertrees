@@ -6,6 +6,7 @@ import matplotlib
 import numpy as np
 import pandas as pd
 import pytest
+from _sklearn_checks import run_estimator_check
 from sklearn.utils.estimator_checks import parametrize_with_checks
 
 from bettertrees.lab import BaggedFIGSClassifier, RashomonFIGSClassifier
@@ -31,6 +32,11 @@ ESTIMATORS = [SumOfOptimalTrees(), FIGSClassifier(), AdditiveTreeBooster(max_rou
 
 
 def _expected_failures(est):
+    if isinstance(est, LightGBMRefitClassifier):
+        # LightGBM uses row counts for bins/min_child_samples: a weighted row is
+        # not identical to several copies even when the objective mass matches.
+        return {"check_sample_weight_equivalence_on_dense_data":
+                "LightGBM row-count bins and leaf support are not invariant to repetition"}
     if isinstance(est, BaggedFIGSClassifier | RashomonFIGSClassifier):
         # bootstrap replicates and the validation split both draw ROWS
         return {"check_sample_weight_equivalence_on_dense_data":
@@ -44,15 +50,15 @@ def _expected_failures(est):
 
 
 @parametrize_with_checks(ESTIMATORS, expected_failed_checks=_expected_failures)
-def test_sklearn_compatible(estimator, check):
-    check(estimator)
+def test_sklearn_compatible(estimator, check, monkeypatch):
+    run_estimator_check(estimator, check, monkeypatch)
 
 
 def _data(seed=0, n=3000):
     rng = np.random.default_rng(seed)
     X = pd.DataFrame(rng.normal(size=(n, 4)), columns=["age", "income", "debt", "score"])
     X.loc[rng.random(n) < 0.1, "income"] = np.nan
-    logit = X.age + np.nan_to_num(X.income) * X.debt + 0.5 * np.sign(X.score)
+    logit = X.age + np.nan_to_num(X.income.to_numpy(copy=True)) * X.debt + 0.5 * np.sign(X.score)
     y = (rng.random(n) < 1 / (1 + np.exp(-logit))).astype(int)
     return X, y
 

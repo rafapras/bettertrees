@@ -137,6 +137,10 @@ class _TermSet:
 class CompactTreeBooster(_AdditiveTrees):
     """Boosting of optimal shallow trees under a budget of distinct cuts.
 
+    Shrunken boosting of optimal depth-1 to depth-3 trees; identical trees are merged,
+    so a cut used again is free. The budget counts the distinct cuts of the merged
+    model. Not part of the no-tuning rule (``BudgetClassifier``).
+
     Parameters
     ----------
     max_splits : int or None, default=64
@@ -189,6 +193,15 @@ class CompactTreeBooster(_AdditiveTrees):
         Boosting rounds kept (before merging).
     history_ : ndarray
         Validation log-loss per round.
+
+    Examples
+    --------
+    >>> from sklearn.datasets import load_breast_cancer
+    >>> from bettertrees import CompactTreeBooster
+    >>> X, y = load_breast_cancer(return_X_y=True)
+    >>> model = CompactTreeBooster(max_splits=16, feature_screen="fast").fit(X, y)
+    >>> model.predict_proba(X[:2]).shape
+    (2, 2)
     """
 
     def __init__(self, *, max_splits=64, depth=2, learning_rate=0.2, lam=1.0, max_rounds=2000,

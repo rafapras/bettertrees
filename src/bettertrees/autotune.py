@@ -14,11 +14,14 @@ Friedman, Hastie, Tibshirani. "Additive logistic regression: a statistical view
 of boosting." Annals of Statistics, 2000 (best-first growth by gain).
 """
 
+from numbers import Integral, Real
+
 import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.model_selection import StratifiedKFold
 from sklearn.utils.validation import check_is_fitted
 
+from ._data import prepare_training_data
 from .estimator import FastDecisionTreeClassifier
 from .postprocess import expansion_steps, hierarchical_shrinkage_probabilities, prefix_leaf_ids
 
@@ -45,9 +48,32 @@ class FastDecisionTreeClassifierCV(ClassifierMixin, BaseEstimator):
         Candidate ``leaf_shrinkage`` values.
     cv : int >= 2
         Stratified inner folds; the criterion is the validation log-loss.
+        Each class with positive sample weight needs at least ``cv`` rows.
+        Zero-weight rows do not enter the inner folds; the final tree retains
+        all classes observed in ``y``.
     min_samples_leaf, splitter, max_bins, n_jobs, random_state
         Passed to ``FastDecisionTreeClassifier`` (no pruning: truncating by
         prefix needs node ids in expansion order).
+
+    Attributes
+    ----------
+    best_params_ : dict
+        The chosen ``max_leaf_nodes`` and ``leaf_shrinkage``.
+    best_estimator_ : FastDecisionTreeClassifier
+        The tree refitted on all rows with ``best_params_``.
+    cv_scores_ : ndarray of shape (len(leaves_grid), len(shrinkage_grid))
+        Mean validation log-loss of each pair.
+    classes_, n_features_in_, feature_names_in_
+        As in ``best_estimator_``.
+
+    Examples
+    --------
+    >>> from sklearn.datasets import load_breast_cancer
+    >>> from bettertrees import FastDecisionTreeClassifierCV
+    >>> X, y = load_breast_cancer(return_X_y=True)
+    >>> tree = FastDecisionTreeClassifierCV(leaves_grid=(4, 8), shrinkage_grid=(1.0, 10.0))
+    >>> sorted(tree.fit(X, y).best_params_)
+    ['leaf_shrinkage', 'max_leaf_nodes']
     """
 
     def __init__(self, *, leaves_grid=DEFAULT_LEAVES, shrinkage_grid=DEFAULT_SHRINKAGE,
@@ -69,20 +95,35 @@ class FastDecisionTreeClassifierCV(ClassifierMixin, BaseEstimator):
             random_state=self.random_state, **extra)
 
     def fit(self, X, y, sample_weight=None):
-        leaves = sorted({int(v) for v in self.leaves_grid})
-        shrinkage = sorted({float(v) for v in self.shrinkage_grid})
-        if not leaves or leaves[0] < 2:
+        try:
+            leaves = list(self.leaves_grid)
+        except TypeError as exc:
+            raise ValueError("leaves_grid must contain integers >= 2.") from exc
+        if not leaves or any(isinstance(v, bool | np.bool_)
+                             or not isinstance(v, Integral) or v < 2 for v in leaves):
             raise ValueError("leaves_grid must contain integers >= 2.")
-        if not shrinkage or shrinkage[0] <= 0:
-            raise ValueError("shrinkage_grid must contain values > 0.")
-        if int(self.cv) < 2:
-            raise ValueError("cv must be >= 2.")
+        try:
+            shrinkage = list(self.shrinkage_grid)
+        except TypeError as exc:
+            raise ValueError("shrinkage_grid must contain finite values > 0.") from exc
+        if not shrinkage or any(isinstance(v, bool | np.bool_)
+                                or not isinstance(v, Real)
+                                or not np.isfinite(v) or v <= 0 for v in shrinkage):
+            raise ValueError("shrinkage_grid must contain finite values > 0.")
+        if (isinstance(self.cv, bool | np.bool_)
+                or not isinstance(self.cv, Integral) or self.cv < 2):
+            raise ValueError("cv must be an integer >= 2.")
+        leaves = sorted({int(v) for v in leaves})
+        shrinkage = sorted({float(v) for v in shrinkage})
+        self._tree()._validate_parameters()
         X_input = X  # the final fit gets the original input, so it keeps the column names
-        X = np.asarray(X, dtype=np.float32)
-        y = np.asarray(y)
-        classes, encoded = np.unique(y, return_inverse=True)
-        weights = (np.ones(len(y)) if sample_weight is None
-                   else np.asarray(sample_weight, dtype=np.float64))
+        y_input = y
+        X, encoded, weights, classes = prepare_training_data(X, y, sample_weight)
+        counts = np.bincount(encoded, minlength=len(classes))
+        if np.any(counts[counts > 0] < self.cv):
+            raise ValueError(
+                "Each class with positive sample weight must have at least cv rows.")
+        y = classes[encoded]
         scores = np.zeros((len(leaves), len(shrinkage)))
         folds = StratifiedKFold(n_splits=int(self.cv), shuffle=True,
                                 random_state=self.random_state)
@@ -106,10 +147,11 @@ class FastDecisionTreeClassifierCV(ClassifierMixin, BaseEstimator):
                 for j, probs in enumerate(node_probs):
                     scores[i, j] += _log_loss(y_val, probs[ids], w_val) / int(self.cv)
         i, j = np.unravel_index(int(np.argmin(scores)), scores.shape)
-        self.best_params_ = dict(max_leaf_nodes=leaves[i], leaf_shrinkage=shrinkage[j])
-        self.cv_scores_ = scores
-        self.best_estimator_ = self._tree(**self.best_params_).fit(
-            X_input, y, sample_weight=sample_weight)
+        best_params = dict(max_leaf_nodes=leaves[i], leaf_shrinkage=shrinkage[j])
+        best_estimator = self._tree(**best_params).fit(
+            X_input, y_input, sample_weight=sample_weight)
+        self.best_params_, self.cv_scores_ = best_params, scores
+        self.best_estimator_ = best_estimator
         self.classes_ = self.best_estimator_.classes_
         self.n_features_in_ = self.best_estimator_.n_features_in_
         # the inner tree validates names at predict time; mirror them here (sklearn contract)
