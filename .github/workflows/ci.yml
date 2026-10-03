@@ -1,6 +1,6 @@
 name: CI
 
-# Minimal on purpose: one Linux job. Add an OS/Python matrix once there are users.
+# Minimal on purpose: one Linux job per supported Python (3.10 to 3.14, as in pyproject.toml).
 on:
   push:
     branches: [main]
@@ -10,11 +10,15 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: pip
       - run: python -m pip install -e ".[test,examples,typing]" ruff build twine
       - run: ruff check src tests tools examples/credit_data.py

@@ -2,12 +2,12 @@ cff-version: 1.2.0
 message: "If you use bettertrees, please cite it as below. A paper is in preparation; this entry will point to it once it is out."
 title: "bettertrees: Interleaved Tree Models for binary classification under a budget of cuts"
 type: software
-# TODO(author): replace the alias with given-names / family-names (and an ORCID, if any)
 authors:
-  - alias: rafapras
+  - given-names: "Rafael"
+    family-names: "do Prado Silva"
 version: 0.1.0
 license: BSD-3-Clause
-# TODO(author): confirm the repository URL and add date-released when v0.1.0 is tagged
+date-released: 2026-10-03
 repository-code: "https://github.com/rafapras/bettertrees"
 keywords:
   - decision trees

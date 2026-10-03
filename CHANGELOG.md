@@ -1,8 +1,9 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 - 2026-10-03
 
-First public release.
+First public release. Tested on Python 3.10 and 3.14 (numpy 2.2 to 2.5, scikit-learn 1.7 to 1.9,
+numba 0.68); declared for Python 3.10 to 3.14.
 
 - `BudgetClassifier(max_splits=b)`: the Interleaved Tree Model with a fixed rule per cut
   budget, no tuning (evaluated from 4 to 64 cuts; applied unvalidated above).
