@@ -34,7 +34,9 @@ class BudgetClassifier(ClassifierMixin, BaseEstimator):
     Parameters
     ----------
     max_splits : int >= 1, default=16
-        The cut budget, in distinct cuts.
+        The cut budget: the model has at most ``max_splits`` cuts (internal nodes, one per
+        split operation). A (feature, threshold) pair may repeat, so the number of distinct
+        pairs is at most the budget.
 
     Attributes
     ----------

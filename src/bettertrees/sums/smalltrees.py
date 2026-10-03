@@ -385,15 +385,16 @@ class InterleavedTreeClassifier(_AdditiveTrees):
     classification.
 
     ``logit(p) = base + sum_k tree_k(x)``. The trees are small and share one budget of
-    distinct cuts (``max_splits``). At each step the best cut by Newton gain
+    cuts (``max_splits``). At each step the best cut by Newton gain
     ``G^2 / (H + lam)``, in any leaf of any tree or as the root of a new tree, against
     the margin of the other trees, enters the model, and then every leaf is
     re-estimated (one backfitting sweep by default). The number and shape of the trees
     come from the data.
 
     The growth rule comes from FIGS (Tan et al., 2022); re-fitting all the leaves after
-    each cut comes from RGF (Johnson and Zhang, 2014). The budget is counted in
-    distinct cuts.
+    each cut comes from RGF (Johnson and Zhang, 2014). The budget counts cuts (internal
+    nodes, one per split operation); a (feature, threshold) pair may repeat, so the number
+    of distinct pairs is at most the budget.
 
     The constructor's defaults are a full Newton step (``learning_rate=1.0``) and
     ``lam="auto"`` (2 * max_splits), with no cap on the step. The rule the benchmark
@@ -407,7 +408,9 @@ class InterleavedTreeClassifier(_AdditiveTrees):
     Parameters
     ----------
     max_splits : int, default=16
-        Total number of cuts (may stop earlier if no cut has a positive gain).
+        Total number of cuts, i.e. internal nodes over all trees (may stop earlier if no cut
+        has a positive gain). The number of distinct (feature, threshold) pairs is at most
+        ``max_splits``.
     max_trees : int or None, default=None
         Maximum number of trees.
     lam : float or "auto", default="auto"

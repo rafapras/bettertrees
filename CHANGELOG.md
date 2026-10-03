@@ -7,7 +7,7 @@ First public release.
 - `BudgetClassifier(max_splits=b)`: the Interleaved Tree Model with a fixed rule per cut
   budget, no tuning (evaluated from 4 to 64 cuts; applied unvalidated above).
 - `InterleavedTreeClassifier`, the Interleaved Tree Model (ITM): a logit sum of small trees
-  grown together under a budget of distinct cuts, with Newton leaves and a refit of every
+  grown together under a budget of cuts (internal nodes), with Newton leaves and a refit of every
   leaf after each cut. `FIGSClassifier` is an alias.
 - Other sums: `SumOfOptimalTrees` (optimal depth-1 to depth-3 trees), `CompactTreeBooster`,
   `AdditiveTreeBooster`, and `LightGBMRefitClassifier` / `from_lightgbm` (a LightGBM model

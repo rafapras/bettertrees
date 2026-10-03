@@ -9,7 +9,7 @@ Version 0.1.0 is a release candidate; the first public release is being prepared
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 [![CI](https://github.com/rafapras/bettertrees/actions/workflows/ci.yml/badge.svg)](https://github.com/rafapras/bettertrees/actions/workflows/ci.yml)
 
-![AUC against the number of distinct cuts: the ITM above LightGBM and CART of the same size](https://raw.githubusercontent.com/rafapras/bettertrees/main/docs/images/frontier.png)
+![AUC against the number of cuts: the ITM above LightGBM and CART of the same size](https://raw.githubusercontent.com/rafapras/bettertrees/main/docs/images/frontier.png)
 
 ## Why
 
@@ -17,7 +17,7 @@ Where a decision must be explained line by line, as in credit scoring and in the
 sciences, the binding constraint is the size of the model: a scorecard with a few dozen bins, a
 tree with a few dozen nodes. bettertrees asks how much predictive power fits in each cut. Its main
 model, the Interleaved Tree Model (ITM), is a logit sum of a few small trees that share one budget
-of distinct cuts. You set the budget; a fixed rule sets everything else, so there is nothing to
+of cuts. You set the budget; a fixed rule sets everything else, so there is nothing to
 tune per dataset.
 
 ## Install
@@ -204,10 +204,11 @@ small tree with values in log-odds. Growth starts with no trees. At each step ev
 tree, and the root of a new tree, is a candidate; the cut with the largest Newton gain
 `G_l²/(H_l + λ) + G_r²/(H_r + λ) − G²/(H + λ)`, at the margin of the other trees, is added; its
 two leaves take a Newton step `−G/(H + λ)`, and one sweep then refits every leaf of every tree.
-Growth stops at b distinct (feature, threshold) pairs. The growth across trees comes from FIGS
+Growth stops after b cuts (internal nodes, one per split operation); a (feature, threshold)
+pair may repeat, so the model has at most b distinct pairs. The growth across trees comes from FIGS
 (Tan et al.), the refit of all leaves from RGF (Johnson and Zhang); the ITM replaces FIGS's
-mean-residual leaves with Newton steps in log-odds, refits after every cut, counts the budget in
-distinct cuts and replaces tuning with a fixed rule. Features are binned into 32 quantile bins;
+mean-residual leaves with Newton steps in log-odds, refits after every cut, and replaces tuning with a
+fixed rule. Features are binned into 32 quantile bins;
 missing values get a bin of their own and always go left.
 
 ## Limitations
