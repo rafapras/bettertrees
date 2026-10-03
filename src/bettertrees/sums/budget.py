@@ -1,10 +1,14 @@
 """One estimator per cut budget, no tuning: the fixed rule of the benchmark."""
 
+from __future__ import annotations
+
 from numbers import Integral
+from typing import Any
 
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.utils.validation import check_is_fitted
 
+from .._typing import ArrayLike, FloatArray, LabelArray, SelfT
 from .smalltrees import InterleavedTreeClassifier
 
 
@@ -55,7 +59,7 @@ class BudgetClassifier(ClassifierMixin, BaseEstimator):
     0.3
     """
 
-    def __init__(self, max_splits=16):
+    def __init__(self, max_splits: int = 16) -> None:
         self.max_splits = max_splits
 
     def _make(self):
@@ -67,7 +71,8 @@ class BudgetClassifier(ClassifierMixin, BaseEstimator):
             return InterleavedTreeClassifier(max_splits=b, max_delta_step=4.0)
         return InterleavedTreeClassifier(max_splits=b, learning_rate=0.3)
 
-    def fit(self, X, y, sample_weight=None):
+    def fit(self: SelfT, X: ArrayLike, y: ArrayLike,
+            sample_weight: ArrayLike | None = None) -> SelfT:
         """Fit the model the rule picks for ``max_splits``."""
         self.model_ = self._make().fit(X, y, sample_weight=sample_weight)
         self.classes_ = self.model_.classes_
@@ -78,19 +83,19 @@ class BudgetClassifier(ClassifierMixin, BaseEstimator):
             self.__dict__.pop("feature_names_in_", None)
         return self
 
-    def predict_proba(self, X):
+    def predict_proba(self, X: ArrayLike) -> FloatArray:
         check_is_fitted(self, "model_")
         return self.model_.predict_proba(X)
 
-    def predict(self, X):
+    def predict(self, X: ArrayLike) -> LabelArray:
         check_is_fitted(self, "model_")
         return self.model_.predict(X)
 
-    def decision_function(self, X):
+    def decision_function(self, X: ArrayLike) -> FloatArray:
         check_is_fitted(self, "model_")
         return self.model_.decision_function(X)
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         # only reached for names not found on the wrapper: public methods and fitted
         # attributes of the chosen model (explain, rules, trees_, base_margin_, ...)
         if name.startswith("__") or "model_" not in self.__dict__:

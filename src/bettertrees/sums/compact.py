@@ -15,8 +15,13 @@ distinct cuts (or when the validation loss stops improving). The result is a
 plain sum of trees: step functions per feature plus a few interaction trees.
 """
 
+from __future__ import annotations
+
+from typing import Literal
+
 import numpy as np
 
+from .._typing import ArrayLike, Seed, SelfT
 from ._common import (
     base_margin,
     binned,
@@ -204,11 +209,15 @@ class CompactTreeBooster(_AdditiveTrees):
     (2, 2)
     """
 
-    def __init__(self, *, max_splits=64, depth=2, learning_rate=0.2, lam=1.0, max_rounds=2000,
-                 min_weight=20.0, max_bins=32, validation_fraction=0.15, patience=50,
-                 refit=False, refit_lam=None, refit_sweeps=4, max_features_d2=32,
-                 max_features_d3=12, feature_screen="lgbm", new_cut_penalty=1.0,
-                 grow_top=0, max_depth=4, max_leaves=0, random_state=0):
+    def __init__(self, *, max_splits: int = 64, depth: Literal[1, 2, 3, "auto"] = 2,
+                 learning_rate: float = 0.2, lam: float = 1.0, max_rounds: int = 2000,
+                 min_weight: float = 20.0, max_bins: int = 32, validation_fraction: float = 0.15,
+                 patience: int = 50, refit: bool = False, refit_lam: float | None = None,
+                 refit_sweeps: int = 4, max_features_d2: int | None = 32,
+                 max_features_d3: int | None = 12,
+                 feature_screen: Literal["lgbm", "fast"] = "lgbm", new_cut_penalty: float = 1.0,
+                 grow_top: int = 0, max_depth: int = 4, max_leaves: int = 0,
+                 random_state: Seed = 0) -> None:
         self.max_splits = max_splits
         self.depth = depth
         self.learning_rate = learning_rate
@@ -336,7 +345,8 @@ class CompactTreeBooster(_AdditiveTrees):
 
     # ---------------------------------------------------------------- fit
 
-    def fit(self, X, y, sample_weight=None, y_soft=None):
+    def fit(self: SelfT, X: ArrayLike, y: ArrayLike, sample_weight: ArrayLike | None = None,
+            y_soft: ArrayLike | None = None) -> SelfT:
         """Boost, merge and (optionally) refit; see the class docstring."""
         if self.depth not in (1, 2, 3, "auto"):
             raise ValueError("depth must be 1, 2, 3 or 'auto'.")

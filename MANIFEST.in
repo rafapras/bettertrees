@@ -1,5 +1,6 @@
 # source distribution: the package plus what is needed to test and read it
 include CHANGELOG.md CITATION.cff
+recursive-include src *.pyi py.typed
 recursive-include tests *.py
 recursive-include examples *.py *.ipynb
 recursive-include tools *.py *.npz

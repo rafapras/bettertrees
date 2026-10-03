@@ -17,9 +17,14 @@ replaces NaN by a value below each column's minimum before LightGBM sees the
 data, so both agree; ``from_lightgbm`` refuses splits that route NaN right.
 """
 
+from __future__ import annotations
+
+from typing import Any
+
 import numpy as np
 from sklearn.utils.validation import check_is_fitted
 
+from .._typing import ArrayLike, FloatArray, Seed, SelfT
 from ._common import fit_inputs, predict_input
 from .smalltrees import SmallTree, _AdditiveTrees
 
@@ -41,10 +46,11 @@ class TreeSum(_AdditiveTrees):
         scikit-learn conventions; the bins are LightGBM's thresholds.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         pass
 
-    def fit(self, X, y, sample_weight=None):
+    def fit(self: SelfT, X: ArrayLike, y: ArrayLike,
+            sample_weight: ArrayLike | None = None) -> SelfT:
         raise TypeError("TreeSum is built by from_lightgbm(); refit its leaves with "
                         "refit_leaves(X, y).")
 
@@ -65,7 +71,7 @@ def _collect(node, thresholds):
     _collect(node["right_child"], thresholds)
 
 
-def from_lightgbm(model, X, y, n_trees=None):
+def from_lightgbm(model: Any, X: ArrayLike, y: ArrayLike, n_trees: int | None = None) -> TreeSum:
     """``TreeSum`` equivalent to a fitted binary ``lightgbm.LGBMClassifier``.
 
     Parameters
@@ -176,9 +182,10 @@ class LightGBMRefitClassifier(_AdditiveTrees):
     >>> print(model.explain())  # doctest: +SKIP
     """
 
-    def __init__(self, *, max_splits=None, n_estimators=100, num_leaves=4, learning_rate=0.1,
-                 reg_lambda=1.0, min_child_samples=20, refit_lam=10.0, refit_sweeps=3,
-                 random_state=0):
+    def __init__(self, *, max_splits: int | None = None, n_estimators: int = 100,
+                 num_leaves: int = 4, learning_rate: float = 0.1, reg_lambda: float = 1.0,
+                 min_child_samples: int = 20, refit_lam: float | None = 10.0,
+                 refit_sweeps: int = 3, random_state: Seed = 0) -> None:
         self.max_splits = max_splits
         self.n_estimators = n_estimators
         self.num_leaves = num_leaves
@@ -189,7 +196,8 @@ class LightGBMRefitClassifier(_AdditiveTrees):
         self.refit_sweeps = refit_sweeps
         self.random_state = random_state
 
-    def fit(self, X, y, sample_weight=None):
+    def fit(self: SelfT, X: ArrayLike, y: ArrayLike,
+            sample_weight: ArrayLike | None = None) -> SelfT:
         """Fit LightGBM, import, merge and refit (see the class docstring)."""
         import lightgbm as lgb
         if self.max_splits is not None and (
@@ -226,7 +234,7 @@ class LightGBMRefitClassifier(_AdditiveTrees):
                                int(self.refit_sweeps))
         return self
 
-    def decision_function(self, X):
+    def decision_function(self, X: ArrayLike) -> FloatArray:
         """Logit of ``P(y = classes_[1])`` (NaN filled as at fit time)."""
         from ._common import rebin
         check_is_fitted(self, "trees_")

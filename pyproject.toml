@@ -44,6 +44,7 @@ all = ["lightgbm>=4.0", "matplotlib>=3.8", "shap>=0.45", "pandas>=2.0"]
 test = ["pytest>=8", "scipy", "pandas", "matplotlib", "shap", "lightgbm>=4.0"]
 # executing the example notebooks (tools/build_examples.py)
 examples = ["pandas", "matplotlib", "nbformat", "nbclient", "ipykernel"]
+typing = ["mypy>=1.15"]  # the stubs are checked in CI
 
 # TODO(author): confirm the repository URL before publishing (the current git remote)
 [project.urls]
@@ -55,12 +56,27 @@ Changelog = "https://github.com/rafapras/bettertrees/blob/main/CHANGELOG.md"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+bettertrees = ["py.typed", "sums/*.pyi"]
+
 [tool.setuptools.dynamic]
 version = { attr = "bettertrees.__version__" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["tests"]
+
+[tool.mypy]
+files = ["tools/typing_smoke.py"]
+mypy_path = "src"
+follow_imports = "silent"
+ignore_missing_imports = true
+strict = true
+
+# scikit-learn ships no annotations, so its base classes are Any for mypy
+[[tool.mypy.overrides]]
+module = "bettertrees.sums.budget"
+disallow_subclassing_any = false
 
 [tool.ruff]
 line-length = 100

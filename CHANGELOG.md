@@ -30,3 +30,6 @@ First public release.
   rounded rules remain available for reading.
 - Zero-weight rows are excluded before binning and cross-validation; conversion
   overflow and invalid cut budgets are rejected explicitly.
+- Public type hints for the high-level API, the `py.typed` marker, a `budget.pyi` stub for
+  the delegating `BudgetClassifier`, and a downstream `mypy` check in CI; no new runtime
+  dependencies.

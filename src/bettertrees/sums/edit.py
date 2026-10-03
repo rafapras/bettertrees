@@ -20,9 +20,15 @@ Every edit keeps ``predict``, ``rules``, ``to_dict``, ``get_trees``,
 read the same ``trees_``.
 """
 
+from __future__ import annotations
+
+from collections.abc import Sequence
+from typing import Any
+
 import numpy as np
 from sklearn.utils.validation import check_is_fitted
 
+from .._typing import ArrayLike, MonotoneConstraints, SelfT
 from ._common import as_weights, grad_hess, log_loss_margin, rebin, subtree_leaves
 from ._kernels import best_cut_1d, hist_1d, newton_leaf_values
 
@@ -206,7 +212,8 @@ class TreeEditMixin:
 
     # ---------------------------------------------------------------- editing
 
-    def prune(self, tree, node, X=None, sample_weight=None):
+    def prune(self: SelfT, tree: int, node: int, X: ArrayLike | None = None,
+              sample_weight: ArrayLike | None = None) -> SelfT:
         """Turn the cut ``node`` of ``tree`` into a leaf (its subtree is removed).
 
         The new leaf takes the mean of the removed leaves, weighted by the rows of
@@ -238,7 +245,7 @@ class TreeEditMixin:
         self.trees_[tree] = _reachable(t)
         return self
 
-    def set_cut(self, tree, node, feature, threshold):
+    def set_cut(self, tree: int, node: int, feature: int | str, threshold: float) -> float:
         """Change the cut of ``node`` to ``feature <= threshold`` (children kept).
 
         ``feature`` is an index or a column name; the threshold snaps to the
@@ -249,7 +256,8 @@ class TreeEditMixin:
         t.feature[node], t.threshold[node] = f, b
         return real
 
-    def split_leaf(self, tree, leaf, feature, threshold):
+    def split_leaf(self, tree: int, leaf: int, feature: int | str,
+                   threshold: float) -> tuple[int, int, float]:
         """Add the cut ``feature <= threshold`` at ``leaf`` (both children inherit its
         value; call ``refit_leaves`` to re-estimate). Returns (left, right, real threshold)."""
         t = self._check_node(tree, leaf, internal=False)
@@ -258,7 +266,8 @@ class TreeEditMixin:
         left, right = t.split(leaf, f, b)
         return left, right, real
 
-    def add_stump(self, feature, threshold, left_value=0.0, right_value=0.0):
+    def add_stump(self, feature: int | str, threshold: float, left_value: float = 0.0,
+                  right_value: float = 0.0) -> tuple[int, float]:
         """Append a one-cut tree (a new rule) to the sum. Returns (tree index, real threshold)."""
         from .smalltrees import SmallTree
         check_is_fitted(self, "trees_")
@@ -270,13 +279,13 @@ class TreeEditMixin:
         self.trees_.append(t)
         return len(self.trees_) - 1, real
 
-    def drop_tree(self, tree):
+    def drop_tree(self: SelfT, tree: int) -> SelfT:
         """Remove a whole tree from the sum. Returns self."""
         self._check_node(tree, 0)
         del self.trees_[tree]
         return self
 
-    def merge_duplicates(self):
+    def merge_duplicates(self) -> int:
         """Merge trees with identical cuts into one (values add up; predictions
         unchanged). Returns the number of trees removed."""
         check_is_fitted(self, "trees_")
@@ -297,14 +306,17 @@ class TreeEditMixin:
         self.trees_ = kept
         return removed
 
-    def set_leaf_value(self, tree, node, value):
+    def set_leaf_value(self: SelfT, tree: int, node: int, value: float) -> SelfT:
         """Overwrite the logit value of a leaf (e.g. a business override). Returns self."""
         t = self._check_node(tree, node, internal=False)
         t.value[node] = float(value)
         return self
 
-    def refit_leaves(self, X, y, sample_weight=None, lam=None, sweeps=5, trees=None,
-                     refit_base=True, monotone=None):
+    def refit_leaves(self: SelfT, X: ArrayLike, y: ArrayLike,
+                     sample_weight: ArrayLike | None = None, lam: float | None = None,
+                     sweeps: int = 5, trees: Sequence[int] | None = None,
+                     refit_base: bool = True,
+                     monotone: MonotoneConstraints | None = None) -> SelfT:
         """Re-estimate the leaves for the current structure (cuts are not changed).
 
         Full Newton backfitting on (X, y) with L2 penalty ``lam`` (default: the
@@ -333,7 +345,8 @@ class TreeEditMixin:
             out[self._feature_index(f)] = int(sign)
         return out
 
-    def monotone_violations(self, feature, increasing=True, tol=1e-12):
+    def monotone_violations(self, feature: int | str, increasing: bool = True,
+                            tol: float = 1e-12) -> list[tuple[int, int, int, float]]:
         """Leaf pairs that break monotonicity in ``feature``, as a list of
         ``(tree, lower_leaf, upper_leaf, gap)`` (empty = monotone). Exact per
         tree: for every cut on ``feature``, each leaf of its left subtree is
@@ -350,7 +363,7 @@ class TreeEditMixin:
                     out.append((i, a, b, float(gap)))
         return out
 
-    def enforce_monotone(self, monotone):
+    def enforce_monotone(self: SelfT, monotone: MonotoneConstraints) -> SelfT:
         """Make the sum monotone ({feature: +1/-1}) by pooling violating leaves
         (equal weights; ``refit_leaves(..., monotone=...)`` weighs by data). Returns self."""
         check_is_fitted(self, "trees_")
@@ -361,8 +374,10 @@ class TreeEditMixin:
 
     # ---------------------------------------------------------------- Rashomon
 
-    def cut_alternatives(self, X, y, tree, node, *, sample_weight=None, top=5, epsilon=0.01,
-                         lam=None, sweeps=3):
+    def cut_alternatives(self, X: ArrayLike, y: ArrayLike, tree: int, node: int, *,
+                         sample_weight: ArrayLike | None = None, top: int = 5,
+                         epsilon: float = 0.01, lam: float | None = None,
+                         sweeps: int = 3) -> list[dict[str, Any]]:
         """Other cuts for ``node`` that fit (X, y) about as well (local Rashomon set).
 
         For each feature, the best cut for the rows reaching ``node`` (Newton

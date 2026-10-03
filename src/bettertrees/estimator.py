@@ -5,8 +5,11 @@ follows LightGBM (Ke et al., 2017) and scikit-learn's HistGradientBoosting;
 leaf probabilities can use hierarchical shrinkage (Agarwal et al., ICML 2022).
 """
 
+from __future__ import annotations
+
 from numbers import Integral, Real
 from time import perf_counter
+from typing import Literal
 
 import numpy as np
 from numba import config as numba_config
@@ -14,7 +17,8 @@ from numba import get_num_threads, set_num_threads
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.utils.validation import check_is_fitted, check_random_state
 
-from ._data import prepare_training_data, validate_X
+from ._data import NodeArrays, prepare_training_data, validate_X
+from ._typing import ArrayLike, FeatureNames, FloatArray, IndexArray, LabelArray, Seed, SelfT
 from .bins import fit_bin_edges, transform_bins_row_major
 from .builder import grow_tree_exact, grow_tree_hist
 from .kernels import apply_nodes
@@ -131,18 +135,28 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
     >>> print(tree.export_text())  # doctest: +SKIP
     """
 
+    classes_: LabelArray
+    n_features_in_: int
+    n_classes_: int
+    feature_names_in_: LabelArray
+    nodes_: NodeArrays
+    bin_edges_: tuple[FloatArray, ...] | None
+
     # the cut objective and its options; only PrecisionTreeClassifier exposes them
     objective = "gini"
     positive_class = None
     min_precision = 0.9
     min_support = 1.0
 
-    def __init__(self, *, splitter="hist", max_depth=None, min_samples_leaf=1,
-                 max_leaf_nodes=None, random_state=None, min_impurity_decrease=0.0,
-                 max_bins=255, search_stopping="bound", gain_tolerance=0.0,
-                 max_feature_repeats=None, n_jobs=1,
-                 reuse_parent_histograms=False, monotonic_cst=None,
-                 leaf_smoothing=0.0, ccp_alpha=0.0, leaf_shrinkage=0.0):
+    def __init__(self, *, splitter: Literal["hist", "exact"] = "hist",
+                 max_depth: int | None = None, min_samples_leaf: int = 1,
+                 max_leaf_nodes: int | None = None, random_state: Seed = None,
+                 min_impurity_decrease: float = 0.0, max_bins: int = 255,
+                 search_stopping: Literal["bound", "off"] = "bound",
+                 gain_tolerance: float = 0.0, max_feature_repeats: int | None = None,
+                 n_jobs: int = 1, reuse_parent_histograms: bool = False,
+                 monotonic_cst: ArrayLike | None = None, leaf_smoothing: float = 0.0,
+                 ccp_alpha: float = 0.0, leaf_shrinkage: float = 0.0) -> None:
         """Store the parameters without any training work (clone/set_params)."""
         self.splitter = splitter
         self.max_depth = max_depth
@@ -301,7 +315,8 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         return project_monotonic_leaf_probabilities(
             nodes, directions, positive_class_index, self.leaf_smoothing)
 
-    def fit(self, X, y, sample_weight=None):
+    def fit(self: SelfT, X: ArrayLike, y: ArrayLike,
+            sample_weight: ArrayLike | None = None) -> SelfT:
         """Fit the tree (with a temporary scope for the Numba thread count).
 
         Parameters
@@ -447,7 +462,7 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         self.fit_stats_ = stats
         return self
 
-    def predict_proba(self, X):
+    def predict_proba(self, X: ArrayLike) -> FloatArray:
         """Class probabilities, columns ordered as ``classes_``."""
         check_is_fitted(self, "nodes_")
         return predict_proba_nodes(
@@ -460,18 +475,18 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
             leaf_probabilities=getattr(self, "leaf_probabilities_", None),
         )
 
-    def predict(self, X):
+    def predict(self, X: ArrayLike) -> LabelArray:
         """Original class labels; ties go to the lowest index in ``classes_``."""
         probabilities = self.predict_proba(X)
         return self.classes_[probabilities.argmax(axis=1)]
 
-    def predict_log_proba(self, X):
+    def predict_log_proba(self, X: ArrayLike) -> FloatArray:
         """Logarithm of the predicted probabilities."""
         probabilities = self.predict_proba(X)
         with np.errstate(divide="ignore"):
             return np.log(probabilities)
 
-    def apply(self, X):
+    def apply(self, X: ArrayLike) -> IndexArray:
         """Index of the leaf that receives each sample."""
         check_is_fitted(self, "nodes_")
         X_validated = self._validate_predict_X(X)
@@ -481,7 +496,7 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
             self.nodes_.missing_left,
         ), dtype=np.intp)
 
-    def export_text(self, feature_names=None, precision=4):
+    def export_text(self, feature_names: FeatureNames | None = None, precision: int = 4) -> str:
         """The tree drawn as text, like ``sklearn.tree.export_text``.
 
         Each leaf shows the probability ``predict_proba`` gives (with shrinkage,
@@ -532,7 +547,7 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         walk(0, 0)
         return "\n".join(lines)
 
-    def get_depth(self):
+    def get_depth(self) -> int:
         """Maximum depth of the tree; the root has depth zero."""
         check_is_fitted(self, "nodes_")
         max_depth = 0
@@ -547,13 +562,13 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
             pending.append((int(self.nodes_.right[node_id]), depth + 1))
         return max_depth
 
-    def get_n_leaves(self):
+    def get_n_leaves(self) -> int:
         """Number of leaves of the tree."""
         check_is_fitted(self, "nodes_")
         return int(np.count_nonzero(self.nodes_.left == -1))
 
     @property
-    def feature_importances_(self):
+    def feature_importances_(self) -> FloatArray:
         """Importance normalized by the weighted Gini decrease.
 
         The node mass is the sum of ``class_weight``, so with sample weights

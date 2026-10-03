@@ -38,7 +38,8 @@ pip install "bettertrees[all]"          # + LightGBM screening, matplotlib plots
 
 From source: `pip install "git+https://github.com/rafapras/bettertrees"`. Python 3.10 or later.
 The Numba kernels compile on first use (about 5 to 10 seconds, once per environment) and are
-cached afterwards.
+cached afterwards. The public API has [type hints](https://github.com/rafapras/bettertrees/blob/main/docs/typing.md)
+(`py.typed`); pandas inputs stay at the array-like level.
 
 ## Quickstart
 
