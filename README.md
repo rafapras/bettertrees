@@ -4,7 +4,7 @@
 budget of cuts.**
 
 [![License: BSD-3-Clause](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
-![Python 3.10 to 3.14](https://img.shields.io/badge/python-3.10%20to%203.14-blue.svg)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 [![CI](https://github.com/rafapras/bettertrees/actions/workflows/ci.yml/badge.svg)](https://github.com/rafapras/bettertrees/actions/workflows/ci.yml)
 
 ![AUC against the number of cuts: the ITM above LightGBM and CART of the same size](https://raw.githubusercontent.com/rafapras/bettertrees/main/docs/images/frontier.png)
@@ -25,7 +25,7 @@ pip install bettertrees                 # numpy, numba, scikit-learn
 pip install "bettertrees[all]"          # + LightGBM screening, matplotlib plots, SHAP, pandas
 ```
 
-From source: `pip install "git+https://github.com/rafapras/bettertrees"`. Python 3.10 to 3.14.
+From source: `pip install "git+https://github.com/rafapras/bettertrees"`. Python 3.10 or newer (tested on 3.10 and 3.14).
 The Numba kernels compile on first use (about 5 to 10 seconds, once per environment) and are
 cached afterwards. The public API has [type hints](https://github.com/rafapras/bettertrees/blob/main/docs/typing.md)
 (`py.typed`); pandas inputs stay at the array-like level.

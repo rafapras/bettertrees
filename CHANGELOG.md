@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 - 2026-10-03
+## 0.1.0 (unreleased)
 
 First public release. Tested on Python 3.10 and 3.14 (numpy 2.2 to 2.5, scikit-learn 1.7 to 1.9,
 numba 0.68); declared for Python 3.10 to 3.14.

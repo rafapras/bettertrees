@@ -7,7 +7,6 @@ authors:
     family-names: "do Prado Silva"
 version: 0.1.0
 license: BSD-3-Clause
-date-released: 2026-10-03
 repository-code: "https://github.com/rafapras/bettertrees"
 keywords:
   - decision trees
