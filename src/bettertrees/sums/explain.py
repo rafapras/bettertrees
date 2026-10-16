@@ -28,6 +28,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from .._typing import ArrayLike, FeatureNames, FloatArray, LabelArray
 from ._common import bin_threshold, predict_input, rebin
+from .profiles import ScorecardMixin
 
 
 def feature_names_of(X):
@@ -113,7 +114,7 @@ def leaf_order(tree):
     return out
 
 
-class InterpretableSumMixin:
+class InterpretableSumMixin(ScorecardMixin):
     """Shared interpretable output; the class defines ``_explain_trees()``."""
 
     def __sklearn_tags__(self):
