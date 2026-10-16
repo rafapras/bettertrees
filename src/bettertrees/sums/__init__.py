@@ -10,6 +10,7 @@
 from .additive import AdditiveTreeBooster
 from .budget import BudgetClassifier
 from .compact import CompactTreeBooster
+from .convert import as_tree_sum
 from .imported import LightGBMRefitClassifier, TreeSum, from_lightgbm
 from .screen import screen_features
 from .smalltrees import (
@@ -29,6 +30,7 @@ __all__ = [
     "SmallTree",
     "SumOfOptimalTrees",
     "TreeSum",
+    "as_tree_sum",
     "from_lightgbm",
     "screen_features",
 ]

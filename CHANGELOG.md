@@ -1,6 +1,26 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.2.0 (2026-10-15)
+
+- `as_tree_sum(model, X)`: one entry point that reads LightGBM, XGBoost, CatBoost and
+  scikit-learn tree models (`HistGradientBoostingClassifier`, `GradientBoostingClassifier`,
+  `DecisionTreeClassifier`) as a bettertrees sum with the same raw score (tested for
+  equality), so the whole interpretation API applies to them. Cuts that send missing
+  values right are refused when the feature has missing values in `X`; categorical
+  splits are refused.
+- Scorecard views on every sum: `segments(X)` (the data marked tree by tree: the rule of
+  each leaf and its points), `profiles(X)` (best, modal, median and worst client, observed
+  or the feasible extremes found by branch and bound, plus any clients chosen with
+  `rows=`), `plot_profiles(X)`, `plot_trees()` and `plot_growth()` (the order of the cuts:
+  the ITM records it while growing as `growth_`; boosters grow one tree after another).
+  `plot_trees(x)` writes the client's value next to every cut on its path. Every plot
+  starts from the base, adds one leaf per tree in the same units and says in a legend line
+  what each mark means. Points in the credit convention (`offset`, `pdo`) or raw logit;
+  `bad` chooses the class the score counts against and `bad_label` names it in the plots
+  (e.g. "default").
+- New example notebook `04_scorecard_views`.
+
+## 0.1.0 (2026-10-08)
 
 First public release. Tested on Python 3.10 and 3.14 (numpy 2.2 to 2.5, scikit-learn 1.7 to 1.9,
 numba 0.68); declared for Python 3.10 to 3.14.

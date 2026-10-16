@@ -122,26 +122,32 @@ def from_lightgbm(model: Any, X: ArrayLike, y: ArrayLike, n_trees: int | None = 
     out.classes_ = classes
     out.input_dtype_ = "float64"
     out.bin_edges_ = tuple(np.array(sorted(s), dtype=np.float64) for s in thresholds)
-    trees = []
+    trees, orders = [], []
     for t in trees_info:
-        tree = SmallTree()
+        tree, order = SmallTree(), []
 
-        def grow(node, n, tree=tree):
+        def grow(node, n, tree=tree, order=order):
             if "split_index" not in n:
                 tree.value[node] = float(n["leaf_value"])
                 return
             f = int(n["split_feature"])
             b = int(np.searchsorted(out.bin_edges_[f], float(n["threshold"]))) + 1
+            order.append((int(n["split_index"]), node))  # LightGBM's own order of the cuts
             left, right = tree.split(node, f, b)
             grow(left, n["left_child"])
             grow(right, n["right_child"])
 
         grow(0, t["tree_structure"])
         trees.append(tree)
+        orders.append(order)
     # constant trees (no split) carry LightGBM's initial score: fold them into the base
     out.base_margin_ = float(sum(t.value[0] for t in trees if t.n_splits == 0))
-    out.trees_ = [t for t in trees if t.n_splits > 0]
+    kept = [k for k, t in enumerate(trees) if t.n_splits > 0]
+    out.trees_ = [trees[k] for k in kept]
+    # boosting grows one tree after another: tree order, then LightGBM's split order
+    out.growth_ = [(j, node) for j, k in enumerate(kept) for _, node in sorted(orders[k])]
     out.lam_, out.learning_rate_ = 1.0, 1.0
+    out.source_ = "LightGBM"
     return out
 
 

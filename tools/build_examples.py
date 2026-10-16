@@ -265,6 +265,100 @@ better predictor.)"""),
 ]
 
 
+NB["04_scorecard_views"] = [
+    new_markdown_cell("""\
+# Scorecard views: who is the best, the typical and the worst client?
+
+A logit sum of trees is a scorecard: each tree splits the clients into segments, each
+segment is worth some points, and the score is the sum. `as_tree_sum` reads the ITM,
+LightGBM, XGBoost, CatBoost and scikit-learn tree models the same way, so the views below
+apply to all of them:
+
+- `segments(X)`: the data marked tree by tree (the rule each row falls in and its points);
+- `profiles(X)`: the best, the modal and the worst client;
+- `plot_profiles(X)` and `plot_trees(x)`.
+
+Points follow the credit convention: 600 points at odds 1:1, every 20 points halve the
+odds of default (`offset`, `pdo`; `scale="logit"` keeps the raw logit)."""),
+    new_code_cell(SETUP),
+    new_markdown_cell("""\
+## Three models with 10 cuts
+
+LightGBM and XGBoost send missing values to the side they learn; bettertrees always
+sends them left, so for the two boosters the missing incomes are filled below the
+minimum before training (the ITM takes them as they are)."""),
+    new_code_cell("""\
+import lightgbm as lgb
+import xgboost as xgb
+
+from bettertrees import BudgetClassifier, as_tree_sum
+
+fill = X_train.min() - 1
+X_train_f, X_test_f = X_train.fillna(fill), X_test.fillna(fill)
+itm = BudgetClassifier(max_splits=10).fit(X_train, y_train)
+lgbm = lgb.LGBMClassifier(n_estimators=5, num_leaves=3, learning_rate=0.5,
+                          verbose=-1).fit(X_train_f, y_train)          # 5 trees x 2 cuts
+xgbm = xgb.XGBClassifier(n_estimators=10, max_depth=1, learning_rate=0.5
+                         ).fit(X_train_f, y_train)                      # 10 stumps
+sums = {"ITM": (as_tree_sum(itm, X_train), X_test),
+        "LightGBM": (as_tree_sum(lgbm, X_train_f), X_test_f),
+        "XGBoost": (as_tree_sum(xgbm, X_train_f), X_test_f)}
+pd.DataFrame({name: {"trees": len(s.trees_), "cuts": s.n_splits_,
+                     "test AUC": roc_auc_score(y_test, s.predict_proba(Xt)[:, 1])}
+              for name, (s, Xt) in sums.items()}).T.round(4)"""),
+    new_markdown_cell("""\
+## The data marked tree by tree
+
+One column per tree with the rule of the leaf, one with its points; `base` plus the
+points is the score, exactly."""),
+    new_code_cell("""\
+seg = itm.segments(X_test)
+seg.iloc[:3].T"""),
+    new_markdown_cell(
+        "Each tree is a segmentation, so it can be checked against the observed default rate:"),
+    new_code_cell("""\
+(seg.assign(default=y_test)
+    .groupby(["tree_1", "tree_1_points"])["default"].agg(["size", "mean"])
+    .round(3))"""),
+    new_markdown_cell("""\
+## Best, modal and worst client
+
+`kind="observed"` (the default) takes real rows: the best and the worst score in the data.
+The modal client is the most frequent combination of leaves."""),
+    new_code_cell("""\
+fig = itm.plot_profiles(X_test, bad_label="default", title="ITM, 10 cuts")"""),
+    new_code_cell("""\
+s, Xt = sums["LightGBM"]
+fig = s.plot_profiles(Xt, bad_label="default", title="LightGBM, 10 cuts")"""),
+    new_markdown_cell("""\
+`kind="feasible"` searches the combinations of leaves that the cuts allow. The extreme
+combination can be more extreme than any client in the data:"""),
+    new_code_cell("""\
+pd.concat({"observed": itm.profiles(X_test)[["score", "p"]],
+           "feasible": itm.profiles(X_test, kind="feasible")[["score", "p"]]}, axis=1).round(3)"""),
+    new_markdown_cell("""\
+## Grown in parallel, not in sequence
+
+Boosting finishes one tree before starting the next. The ITM chooses, at every cut,
+any leaf of any tree or a new tree. `plot_growth` draws the order of the cuts: a
+staircase for the booster, jumps between trees for the ITM (hollow marker = a new tree)."""),
+    new_code_cell("""\
+import matplotlib.pyplot as plt
+
+fig, axes = plt.subplots(1, 2, figsize=(13, 3.6))
+itm.plot_growth(ax=axes[0])
+sums["LightGBM"][0].plot_growth(ax=axes[1])
+fig.tight_layout()"""),
+    new_markdown_cell("""\
+## The trees, with the path of the worst client
+
+The orange numbers give each cut's place in the order of growth."""),
+    new_code_cell("""\
+worst = itm.profiles(X_test).loc["worst", "row"]
+fig = itm.plot_trees(X_test.loc[[worst]], X=X_test, bad_label="default")"""),
+]
+
+
 def build(run):
     for name, cells in NB.items():
         nb = new_notebook(cells=cells, metadata={

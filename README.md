@@ -144,6 +144,29 @@ input precision and missing-value conventions. SQL printouts round leaf values t
 `precision` significant digits (6 by default); validate the generated query against
 the fitted model on deployment inputs.
 
+### Scorecard views, for bettertrees and for other libraries
+
+Every sum is a scorecard: each tree splits the clients into segments and each segment
+is worth points (600 at odds 1:1, every 20 points halve the odds of default by default).
+`as_tree_sum` reads LightGBM, XGBoost, CatBoost and scikit-learn tree models
+(`HistGradientBoostingClassifier`, `GradientBoostingClassifier`, `DecisionTreeClassifier`)
+as a bettertrees sum with the same score, so the same views compare them:
+
+```python
+from bettertrees import as_tree_sum
+
+s = as_tree_sum(lgbm_model, X_train)    # or the ITM itself, XGBoost, CatBoost, ...
+s.segments(X)                           # the data marked tree by tree: rule and points per tree
+s.profiles(X, which=("best", "median", "worst"), rows=[client_id])  # typical, extreme, chosen
+s.plot_profiles(X, bad_label="default") # score distribution and the profiles, tree by tree
+s.plot_trees(X.iloc[[0]], X=X)          # the trees in points, with the path of one client
+s.plot_growth()                         # the order of the cuts: in sequence or interleaved
+```
+
+`profiles(X, kind="feasible")` finds the best and worst combination of leaves the cuts
+allow, which may be more extreme than any client in the data. See the
+[scorecard views notebook](https://github.com/rafapras/bettertrees/blob/main/examples/04_scorecard_views.ipynb).
+
 ## Results
 
 From the benchmark of the paper (in preparation): 56 binary classification datasets from

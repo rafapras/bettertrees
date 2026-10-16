@@ -521,6 +521,7 @@ def grow_figs(est, Xb, nb, target, w, max_splits, max_trees=None):
     target = np.ascontiguousarray(target, dtype=np.float64)
     w = np.ascontiguousarray(w, dtype=np.float64)
     root_ids, zero = np.zeros(n, dtype=np.int64), np.zeros(n)
+    growth = []  # (tree, node) of every cut, in the order it was made
     for _ in range(max_splits):
         best = (0.0, None, None, None, None)  # gain, tree, node, feature, threshold
         can_add = max_trees is None or len(trees) < max_trees
@@ -549,11 +550,13 @@ def grow_figs(est, Xb, nb, target, w, max_splits, max_trees=None):
             ids_of.append(None)
             k = len(trees) - 1
         trees[k].split(leaf, f, t)
+        growth.append((k, int(leaf)))
         ids_of[k] = trees[k].leaf_ids(Xb)  # only the tree that received the cut changes
         contribs[k], margin = est._newton_step(trees[k], Xb, target, margin, contribs[k], w,
                                                ids_of[k])
         if est.backfit_sweeps:
             margin = est._backfit(trees, contribs, Xb, target, w, est.backfit_sweeps, ids_of)
+    est.growth_ = growth
     return trees
 
 

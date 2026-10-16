@@ -14,6 +14,7 @@ from bettertrees import (
     InterleavedTreeClassifier,
     LightGBMRefitClassifier,
     SumOfOptimalTrees,
+    as_tree_sum,
     from_lightgbm,
 )
 from bettertrees.sums import TreeSum, screen_features
@@ -45,8 +46,11 @@ def public_calls(X: NDArray[np.float64], y: NDArray[np.int64], frame: Any,
     budget_text: str = budget.explain()
     budget_scores: NDArray[np.float64] = budget.decision_function(X)
     screening: dict[str, NDArray[np.float64]] = screen_features(X, y, top_k=2)
+    converted: Any = as_tree_sum(lightgbm_model, X)
+    segments: Any = figs.segments(frame)
+    profiles: Any = budget.profiles(frame, kind="feasible")
 
     # Keep every checked result live without actually fitting models in CI here.
     _ = (probabilities, leaves, text, rules, exported, contributions,
          compact, additive, optimal, refitted, imported, budget_model, budget_text,
-         budget_scores, screening)
+         budget_scores, screening, converted, segments, profiles)

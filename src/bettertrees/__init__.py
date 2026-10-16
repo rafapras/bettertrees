@@ -14,10 +14,14 @@
 - ``AdditiveTreeBooster``: a long sum of optimal depth-1/2 trees with early stopping.
 - ``LightGBMRefitClassifier`` / ``from_lightgbm``: a LightGBM model imported as an
   editable sum, with its leaves refitted jointly.
+- ``as_tree_sum(model, X)``: LightGBM, XGBoost, CatBoost and scikit-learn tree models
+  read as a bettertrees sum (same score), so all the views below apply to them.
 
 The sums (binary classification) expose ``rules()``, ``explain()``, ``to_dict()``,
-``predict_contributions()``, ``plot_shapes()``, ``plot_contributions()`` and the
-editing API; the single tree is multiclass and has ``export_text()``.
+``predict_contributions()``, ``plot_shapes()``, ``plot_contributions()``, the scorecard
+views ``segments()``, ``profiles()``, ``plot_profiles()``, ``plot_trees()``,
+``plot_growth()`` and the editing API; the single tree is multiclass and has
+``export_text()``.
 ``bettertrees.experimental`` has no API stability guarantee; ``bettertrees.lab`` holds
 research code with negative or inconclusive results (no API, no stability, not public).
 """
@@ -32,15 +36,16 @@ from .sums import (
     InterleavedTreeClassifier,
     LightGBMRefitClassifier,
     SumOfOptimalTrees,
+    as_tree_sum,
     from_lightgbm,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = ["AdditiveTreeBooster", "BudgetClassifier",
            "CompactTreeBooster", "FIGSClassifier", "FastDecisionTreeClassifier",
            "FastDecisionTreeClassifierCV", "InterleavedTreeClassifier", "LightGBMRefitClassifier",
-           "SumOfOptimalTrees", "__version__", "from_lightgbm"]
+           "SumOfOptimalTrees", "__version__", "as_tree_sum", "from_lightgbm"]
 
 
 # moved to bettertrees.lab; still importable from here, resolved on first use (kept for
