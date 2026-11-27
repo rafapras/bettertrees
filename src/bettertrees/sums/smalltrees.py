@@ -39,10 +39,10 @@ from ._kernels import (
     best_cut_1d,
     best_depth2,
     best_depth3,
+    best_leaf_cuts_T,
     hist_1d,
     newton_leaf_values,
     newton_step_inplace,
-    node_hist_margin,
     small_tree_leaf_ids,
 )
 from .edit import TreeEditMixin
@@ -516,31 +516,36 @@ def grow_figs(est, Xb, nb, target, w, max_splits, max_trees=None):
     and Rashomon variants). ``est`` provides ``base_margin_``, ``lam_``,
     ``learning_rate_``, ``min_weight`` and ``backfit_sweeps``; returns the trees."""
     n, B = len(Xb), int(nb.max())
+    XT = np.ascontiguousarray(Xb.T)
     trees, contribs, ids_of = [], [], []  # ids_of[k]: leaf of each row in tree k (cached)
     margin = np.full(n, est.base_margin_)
     target = np.ascontiguousarray(target, dtype=np.float64)
     w = np.ascontiguousarray(w, dtype=np.float64)
     root_ids, zero = np.zeros(n, dtype=np.int64), np.zeros(n)
+    root_leaves = np.zeros(1, dtype=np.int64)
     growth = []  # (tree, node) of every cut, in the order it was made
     for _ in range(max_splits):
         best = (0.0, None, None, None, None)  # gain, tree, node, feature, threshold
         can_add = max_trees is None or len(trees) < max_trees
         candidates = list(range(len(trees))) + ([None] if can_add else [])
         for k in candidates:
-            # g, h at the margin of the other trees, computed inside the histogram kernel
-            # (bit-for-bit grad_hess + node_hist)
+            # g, h at the margin of the other trees, fused with L1-resident histogram + cut scan
             if k is None:
                 ids, contrib = root_ids, zero
-                leaves, n_nodes = [0], 1
+                leaves_arr, n_nodes = root_leaves, 1
             else:
                 ids, contrib = ids_of[k], contribs[k]
-                leaves, n_nodes = trees[k].leaves, len(trees[k].feature)
-            hist = node_hist_margin(Xb, target, w, margin, contrib, ids, n_nodes, B)
-            for leaf in leaves:
-                gains, cuts = best_cut_1d(hist[leaf], nb, est.lam_, est.min_weight)
-                f = int(np.argmax(gains))
-                if gains[f] > best[0]:
-                    best = (float(gains[f]), k, leaf, f, int(cuts[f]))
+                leaves_arr = np.asarray(trees[k].leaves, dtype=np.int64)
+                n_nodes = len(trees[k].feature)
+            gains_mat, cuts_mat = best_leaf_cuts_T(
+                XT, nb, target, w, margin, contrib, ids, leaves_arr, n_nodes, B,
+                est.lam_, est.min_weight,
+            )
+            for li in range(len(leaves_arr)):
+                f = int(np.argmax(gains_mat[li]))
+                g_val = float(gains_mat[li, f])
+                if g_val > best[0]:
+                    best = (g_val, k, int(leaves_arr[li]), f, int(cuts_mat[li, f]))
         _, k, leaf, f, t = best
         if k is None and leaf is None:
             break

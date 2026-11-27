@@ -142,3 +142,19 @@ def test_compact_depths_and_growth_respect_limits(depth):
             if t.left[k] != -1:
                 depth_of[t.left[k]] = depth_of[t.right[k]] = depth_of[k] + 1
         assert max(depth_of.values()) <= 3
+
+
+def test_rashomon_forest_key_deduplication():
+    from bettertrees.lab.robust import _forest_key
+    from bettertrees.sums.smalltrees import SmallTree
+
+    t0 = SmallTree.from_nested((0, 5, None, None))
+    t1 = SmallTree.from_nested((1, 10, None, None))
+    t_inter = SmallTree.from_nested((0, 5, (1, 10, None, None), None))
+
+    assert _forest_key([t0, t1]) == _forest_key([t1, t0])
+    assert _forest_key([t0, t1]) != _forest_key([t_inter])
+
+    X, y = _data(n=200, p=6)
+    m = RashomonFIGSClassifier(max_splits=3, n_mutations=10).fit(X, y)
+    assert hasattr(m, "rashomon_members_") and len(m.rashomon_members_) >= 1

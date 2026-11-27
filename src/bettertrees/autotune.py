@@ -101,6 +101,11 @@ class FastDecisionTreeClassifierCV(ClassifierMixin, BaseEstimator):
         self.n_jobs = n_jobs
         self.random_state = random_state
 
+    def __sklearn_tags__(self):
+        tags = super().__sklearn_tags__()
+        tags.input_tags.allow_nan = True
+        return tags
+
     def _tree(self, **extra):
         return FastDecisionTreeClassifier(
             splitter=self.splitter, min_samples_leaf=self.min_samples_leaf,
@@ -186,6 +191,23 @@ class FastDecisionTreeClassifierCV(ClassifierMixin, BaseEstimator):
     def apply(self, X: ArrayLike) -> IndexArray:
         check_is_fitted(self, "best_estimator_")
         return self.best_estimator_.apply(X)
+
+    def predict_log_proba(self, X: ArrayLike) -> FloatArray:
+        check_is_fitted(self, "best_estimator_")
+        return self.best_estimator_.predict_log_proba(X)
+
+    def get_depth(self) -> int:
+        check_is_fitted(self, "best_estimator_")
+        return self.best_estimator_.get_depth()
+
+    def get_n_leaves(self) -> int:
+        check_is_fitted(self, "best_estimator_")
+        return self.best_estimator_.get_n_leaves()
+
+    @property
+    def feature_importances_(self) -> FloatArray:
+        check_is_fitted(self, "best_estimator_")
+        return self.best_estimator_.feature_importances_
 
     def export_text(self, feature_names: FeatureNames | None = None, precision: int = 4) -> str:
         """The selected tree as text (see ``FastDecisionTreeClassifier.export_text``)."""

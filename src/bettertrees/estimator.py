@@ -175,6 +175,11 @@ class FastDecisionTreeClassifier(ClassifierMixin, BaseEstimator):
         self.ccp_alpha = ccp_alpha
         self.leaf_shrinkage = leaf_shrinkage
 
+    def __sklearn_tags__(self):
+        tags = super().__sklearn_tags__()
+        tags.input_tags.allow_nan = True
+        return tags
+
     def _validate_parameters(self):
         """Reject invalid configurations before allocating data or compiling."""
         for name, minimum, allow_none in (("max_depth", 1, True),

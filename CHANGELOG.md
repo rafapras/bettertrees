@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.3.0 (2026-11-26)
+
+- Faster `InterleavedTreeClassifier` (`FIGSClassifier`) via a fused L1-resident
+  column-major Numba kernel (`best_leaf_cuts_T`) and single-pass logistic gradient
+  computation in `node_hist_margin` (bit-for-bit identical predictions; fits 1.00M × 31
+  rows in ~5.3 s and 1.66M × 11 rows in ~4.4 s on 4 cores at 16 cuts).
+- Native categorical support via `CategoricalInterleavedTreeClassifier` (alias
+  `CategoricalFIGSClassifier`), automatically dispatched by
+  `BudgetClassifier(max_splits=b, categorical_features="auto")` on DataFrames with
+  categorical or string columns (purely numeric inputs remain bit-for-bit identical):
+  - Fisher-optimal Newton ratio ordering with rare-in-leaf pooling (`min_cat_weight`)
+    and Rissanen MDL subset complexity regularization (`cat_dof_penalty`).
+  - Separate `missing (NaN)` vs `other / unseen` category codes so unseen test-time
+    categories route to the majority side of each split instead of inheriting missing risk.
+  - Automatic `min_cat_coverage` guardrail so near-unique strings or ISO-8601 timestamps
+    keep chronological order via leak-free `searchsorted` binning (and exact SQL string
+    comparisons) instead of collapsing into `other`.
+  - Optional `max_subset_size` cap for strictly bounded, readable categorical rules.
+- `to_sql()` improvements: `null_safe=True` by default (unseen test-time NULLs route left
+  like Python `NaN`), customizable `score_col` / `proba_col`, zero-tree edge-case support,
+  and full categorical `IN (...)` / `NOT IN (...)` + timestamp SQL export.
+- `FastDecisionTreeClassifier` and `FastDecisionTreeClassifierCV`: sklearn `allow_nan`
+  tag, `predict_log_proba`, `get_depth`, `get_n_leaves`, and `feature_importances_` on the
+  CV wrapper, plus English error messages in `_data.py`.
+- `RashomonFIGSClassifier` (in `bettertrees.lab`): leaf-order-invariant structural
+  deduplication via `_forest_key`.
+- New experimental families in `bettertrees.experimental` (`HingeFIGSClassifier`,
+  `CausalFIGS`, `BudgetRegressor`, `FIGSRegressor`, `SumOfOptimalTreesRegressor`,
+  `rashomon_mcr`) and research prototypes in `bettertrees.lab` (`LookaheadFIGSClassifier`,
+  `CompactTreeBoosterV2`, `L2FIGSClassifier`, `SparseTreeSumClassifier`,
+  `ResidualRatioFIGSClassifier`).
+- New example notebook `05_categorical_and_sql` and stacked 38-dataset benchmark report
+  in `docs/BENCHMARKS.md`.
+
 ## 0.2.0 (2026-10-15)
 
 - `as_tree_sum(model, X)`: one entry point that reads LightGBM, XGBoost, CatBoost and

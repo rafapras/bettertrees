@@ -23,6 +23,7 @@ import numpy as np
 
 from ..sums._common import base_margin, grad_hess, log_loss_margin, sigmoid
 from ..sums._kernels import best_cut_1d, hist_1d
+from ..sums.edit import _key
 from ..sums.smalltrees import FIGSClassifier, SmallTree, grow_figs
 
 
@@ -163,6 +164,11 @@ class BaggedFIGSClassifier(FIGSClassifier):
         trees = grow_figs(self, Xc, nbc, target, w, self.max_splits, self.max_trees)
         self.trees_ = _uncoarsen(trees, T)
         return self
+
+
+def _forest_key(trees):
+    keys = [_key(t) for t in trees if t.n_splits > 0]
+    return tuple(sorted(keys, key=repr))
 
 
 class RashomonFIGSClassifier(FIGSClassifier):
@@ -339,7 +345,7 @@ class RashomonFIGSClassifier(FIGSClassifier):
         # the usable Rashomon set: distinct structures, leaves fitted on the training split
         seen, members = set(), []
         for loss, trees in sorted(near, key=lambda s: s[0]):
-            key = frozenset(_cuts(trees))
+            key = _forest_key(trees)
             if key not in seen:
                 seen.add(key)
                 members.append((loss, self._copy(trees)))

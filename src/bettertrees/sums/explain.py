@@ -282,21 +282,25 @@ class InterpretableSumMixin(ScorecardMixin):
                     trees=trees)
 
     def to_sql(self, table: str = "input", feature_names: FeatureNames | None = None,
-               precision: int = 6, keep_columns: bool = True) -> str:
+               precision: int = 6, keep_columns: bool = True, *,
+               null_safe: bool = True, score_col: str = "score",
+               proba_col: str = "p") -> str:
         """The model as one readable SQL query (additive ``CASE WHEN``, one column per tree).
 
         Each tree becomes a column ``t{k}_{features}`` holding its logit contribution;
         ``score = base + Σ columns`` and ``p = 1 / (1 + EXP(-score))``. Every ``WHEN``
         is a whole leaf (the path merged into per-feature intervals), so the branches
-        read on their own, in any order. Missing values follow the model: ``x <= v``
-        includes NULL for features that had NaN in training; other features are
-        assumed non-null. Uses only ``CASE``, ``AND``, ``IS NULL`` and ``EXP``
-        (PostgreSQL, DuckDB, BigQuery, Snowflake, SQL Server, SQLite >= 3.35).
+        read on their own, in any order. With ``null_safe=True`` (default), ``x <= v``
+        includes ``OR x IS NULL`` for every feature so unseen test-time NULLs route left
+        like NaN in Python; with ``null_safe=False``, NULL branches are emitted only for
+        features that had NaN in training. Uses only ``CASE``, ``AND``, ``IS NULL`` and
+        ``EXP`` (PostgreSQL, DuckDB, BigQuery, Snowflake, SQL Server, SQLite >= 3.35).
         """
         check_is_fitted(self, "base_margin_")
         names = self._names(feature_names)
         nan = getattr(self, "nan_features_", None)
         name = (lambda j: _sql_ident(names[j])) if names is not None else (lambda j: f"x{j}")
+        slug = (lambda j: "".join(c if c.isalnum() else "_" for c in str(names[j])))
         num = lambda v: _fmt(v, precision)
         # cuts: the shortest decimal that is the same float32 (the model bins in float32)
         cut = lambda v: np.format_float_positional(np.float32(v), unique=True, trim="-")
@@ -307,7 +311,12 @@ class InterpretableSumMixin(ScorecardMixin):
             for f, lft in zip(tree.feature, tree.left):
                 if lft != -1 and int(f) not in feats:
                     feats.append(int(f))
-            col = f"t{k}_" + "_".join(name(f).strip('"') for f in feats) if feats else f"t{k}"
+            if names is not None and feats:
+                col = f"t{k}_" + "_".join(slug(f) for f in feats)
+            elif feats:
+                col = f"t{k}_" + "_".join(f"x{f}" for f in feats)
+            else:
+                col = f"t{k}"
             col = _sql_ident(col[:60])
             leaves = []
 
@@ -336,7 +345,7 @@ class InterpretableSumMixin(ScorecardMixin):
                 conds = []
                 for f, (lo, hi) in bounds.items():
                     nm = name(f)
-                    nan_ok = nan is not None and bool(nan[f])
+                    nan_ok = bool(null_safe) or (nan is not None and bool(nan[f]))
                     if lo is None:
                         if hi == 0:
                             conds.append(f"{nm} IS NULL")
@@ -360,9 +369,27 @@ class InterpretableSumMixin(ScorecardMixin):
             blocks.append("\n".join(lines))
             cols.append(col)
         n_cuts = sum(t.n_splits for t in trees)
+        s_col, p_col = _sql_ident(score_col), _sql_ident(proba_col)
         head = (f"-- logit P(y = {self.classes_[1]}) = base + sum of {len(trees)} tree columns "
-                f"({n_cuts} cuts); p = 1 / (1 + EXP(-score))")
+                f"({n_cuts} cuts); {p_col} = 1 / (1 + EXP(-{s_col}))")
         keep = "*, " if keep_columns else ""
+        final_line = (f"SELECT *, 1.0 / (1.0 + EXP(-{s_col})) AS {p_col}" if keep_columns
+                      else f"SELECT {s_col}, 1.0 / (1.0 + EXP(-{s_col})) AS {p_col}")
+        if not blocks:
+            contrib_body = ["  SELECT *"] if keep_columns else ["  SELECT 0 AS _bt_dummy"]
+            return "\n".join([
+                head,
+                "WITH contributions AS (",
+                *contrib_body,
+                f"  FROM {table}",
+                "), scored AS (",
+                f"  SELECT {keep}{num(float(self.base_margin_))}  -- base",
+                f"    AS {s_col}",
+                "  FROM contributions",
+                ")",
+                final_line,
+                "FROM scored;",
+            ])
         return "\n".join([
             head,
             "WITH contributions AS (",
@@ -370,12 +397,12 @@ class InterpretableSumMixin(ScorecardMixin):
             ",\n".join(blocks),
             f"  FROM {table}",
             "), scored AS (",
-            f"  SELECT *, {num(float(self.base_margin_))}  -- base",
+            f"  SELECT {keep}{num(float(self.base_margin_))}  -- base",
             *[f"    + {c}" for c in cols],
-            "    AS score",
+            f"    AS {s_col}",
             "  FROM contributions",
             ")",
-            "SELECT *, 1.0 / (1.0 + EXP(-score)) AS p",
+            final_line,
             "FROM scored;",
         ])
 

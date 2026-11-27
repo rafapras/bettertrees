@@ -201,3 +201,27 @@ def test_export_text_shows_the_probabilities_predict_proba_returns(kwargs):
     assert predicted <= {round(v, 10) for v in shown}
     cv = FastDecisionTreeClassifierCV(leaves_grid=(2, 8), cv=3).fit(X, y)
     assert cv.export_text().count("P(") == cv.best_estimator_.get_n_leaves()
+
+
+def test_estimator_and_cv_allow_nan_tags_and_delegation():
+    from sklearn.utils import get_tags
+
+    t = FastDecisionTreeClassifier()
+    cv_t = FastDecisionTreeClassifierCV(leaves_grid=[4, 8], shrinkage_grid=[1.0, 10.0])
+
+    assert get_tags(t).input_tags.allow_nan is True
+    assert get_tags(cv_t).input_tags.allow_nan is True
+
+    X, y = _data(n=200)
+    cv_t.fit(X, y)
+
+    log_p = cv_t.predict_log_proba(X)
+    assert log_p.shape == (len(X), 2)
+    np.testing.assert_allclose(log_p, np.log(cv_t.predict_proba(X)))
+    assert isinstance(cv_t.get_depth(), int)
+    assert isinstance(cv_t.get_n_leaves(), int)
+    importances = cv_t.feature_importances_
+    assert len(importances) == X.shape[1]
+    np.testing.assert_allclose(importances.sum(), 1.0, atol=1e-6)
+    assert isinstance(cv_t.export_text(), str)
+    assert len(cv_t.apply(X)) == len(X)

@@ -1,7 +1,7 @@
 """Describe delegated methods, including edits that return the underlying model."""
 
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, Literal
 
 from sklearn.base import BaseEstimator, ClassifierMixin
 
@@ -10,15 +10,18 @@ from .explain import InterpretableSumMixin
 from .smalltrees import InterleavedTreeClassifier
 
 _BudgetModel = InterleavedTreeClassifier
+CategoricalSpec = Literal["auto"] | Sequence[int | str] | None
 
 class BudgetClassifier(InterpretableSumMixin, ClassifierMixin, BaseEstimator):
     max_splits: int
+    categorical_features: CategoricalSpec
     model_: InterleavedTreeClassifier
     classes_: LabelArray
     n_features_in_: int
     feature_names_in_: LabelArray
 
-    def __init__(self, max_splits: int = ...) -> None: ...
+    def __init__(self, max_splits: int = ..., *,
+                 categorical_features: CategoricalSpec = ...) -> None: ...
     def fit(self: SelfT, X: ArrayLike, y: ArrayLike,
             sample_weight: ArrayLike | None = ...) -> SelfT: ...
     def predict_proba(self, X: ArrayLike) -> FloatArray: ...
