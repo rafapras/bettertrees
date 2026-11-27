@@ -19,7 +19,7 @@ from ..sums._common import (
     binned,
     fit_inputs,
     grad_hess,
-    log_loss_margin as _log_loss,
+    log_loss_margin,
     rebin,
     top_features,
 )
@@ -37,7 +37,7 @@ def _coarse_all_pairs_top_features(
     Xt, g, h, w, nb, lam, min_weight, k, Xq, nb_q, sub_idx=None
 ):
     """FAST screening pairing 32-bin 1D gains with coarse 4-bin all-pairs interaction scores."""
-    n, p = Xt.shape
+    _, p = Xt.shape
     if k is None or p <= k:
         return None
     gains_1d, _ = best_cut_1d(hist_1d(Xt, g, h, w, int(nb.max())), nb, lam, min_weight)
@@ -318,9 +318,9 @@ class CompactTreeBoosterV2(CompactTreeBooster):
             rounds.append((key, step))
             if val.any():
                 m_val += values[tree.leaf_ids(Xv)]
-                loss = _log_loss(yv, m_val, wv)
+                loss = log_loss_margin(yv, m_val, wv)
             else:
-                loss = _log_loss(yt, m_tr, wt)
+                loss = log_loss_margin(yt, m_tr, wt)
             history.append(loss)
             if loss < best - 1e-12:
                 best, best_round = loss, len(rounds)

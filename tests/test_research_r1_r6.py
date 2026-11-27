@@ -24,8 +24,8 @@ from bettertrees.experimental import (
     SumOfOptimalTreesRegressor,
     refit_leaves_l2,
 )
-from bettertrees.sums.categorical import _best_cat_hist
 from bettertrees.sums._common import grad_hess, rebin
+from bettertrees.sums.categorical import _best_cat_hist
 from bettertrees.sums.smalltrees import SmallTree
 
 

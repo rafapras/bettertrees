@@ -121,7 +121,7 @@ def _best_hinge_kernel(XT, ZT, nb, taus_mat, used_hinges, g, h, w, lam, min_weig
             L2 += S2[b]
             RL0 += R0[b]
             RL1 += R1[b]
-            if used_hinges[j, t] or WL < min_weight or (W_fin - WL) < min_weight:
+            if used_hinges[j, t] or min_weight > WL or min_weight > (W_fin - WL):
                 continue
             U0 = T_S0 - L0
             U1 = T_S1 - L1
@@ -767,8 +767,8 @@ class HingeFIGSClassifier(InterpretableSumMixin, ClassifierMixin, BaseEstimator)
             return sql
         names = self._names(feature_names)
         name = (lambda j: _sql_ident(names[j])) if names is not None else (lambda j: f"x{j}")
-        num = lambda v: format(float(v), f".{precision}g")  # noqa: E731
-        cut = lambda v: np.format_float_positional(  # noqa: E731
+        num = lambda v: format(float(v), f".{precision}g")
+        cut = lambda v: np.format_float_positional(
             np.float64(v), unique=True, trim="-"
         )
 

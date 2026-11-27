@@ -11,7 +11,7 @@ from ..sums._common import (
     bin_threshold,
     fit_inputs,
     grad_hess,
-    log_loss_margin as _log_loss,
+    log_loss_margin,
     predict_input,
     rebin,
 )
@@ -19,7 +19,7 @@ from ..sums._kernels import best_cut_1d, combination_scores, hist_1d, node_hist,
 from ..sums.additive import AdditiveTreeBooster
 from ..sums.compact import _TermSet
 from ..sums.edit import TreeEditMixin, _key
-from ..sums.explain import InterpretableSumMixin, _fmt, _sql_ident
+from ..sums.explain import InterpretableSumMixin, _fmt
 from ..sums.smalltrees import SmallTree, _AdditiveTrees
 
 
@@ -118,7 +118,7 @@ class SparseTreeSumClassifier(TreeEditMixin, InterpretableSumMixin, ClassifierMi
         alphas = np.zeros(M, dtype=np.float64)
         alpha0 = 0.0
         max_b = max(budgets)
-        init_loss = float(_log_loss(target, np.full(n, self.base_margin_), w))
+        init_loss = float(log_loss_margin(target, np.full(n, self.base_margin_), w))
         snapshots = [(0, init_loss, 0.0, alphas.copy())]
 
         for lam_l1 in lambdas:
@@ -144,7 +144,7 @@ class SparseTreeSumClassifier(TreeEditMixin, InterpretableSumMixin, ClassifierMi
 
             active = alphas > 1e-8
             c_used = int(costs_arr[active].sum())
-            loss = float(_log_loss(target, margin, w))
+            loss = float(log_loss_margin(target, margin, w))
             snapshots.append((c_used, loss, float(alpha0), alphas.copy()))
             if c_used > max_b * 1.5:
                 break
@@ -340,9 +340,8 @@ class ResidualRatioFIGSClassifier(_AdditiveTrees):
                                 best = (float(g_c[q]), "comb", kind, fi, fj, float(t_c[q]))
                             break
 
-            if best[2] is None and best[1] == "axis":
-                if best[3] is None:
-                    break
+            if best[2] is None and best[1] == "axis" and best[3] is None:
+                break
 
             if best[1] == "axis":
                 _, _, k, leaf, f, cut = best

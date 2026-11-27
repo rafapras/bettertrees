@@ -377,7 +377,7 @@ class _RegSumBase(RegressorMixin, BaseEstimator):
         nan = getattr(self, "nan_features_", None)
 
         col_ref = (lambda j: _sql_ident(names[j])) if names is not None else (lambda j: f"x{j}")
-        num = lambda v: f"{float(v):.{precision}g}"  # noqa: E731
+        num = lambda v: f"{float(v):.{precision}g}"
 
         def cut(v):
             return np.format_float_positional(np.float64(v), unique=True, trim="-")

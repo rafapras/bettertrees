@@ -6,13 +6,7 @@ import numpy as np
 from sklearn.base import clone
 from sklearn.utils.validation import check_is_fitted
 
-from ..sums._common import (
-    as_weights,
-    grad_hess,
-    log_loss_margin as _log_loss,
-    predict_input,
-    rebin,
-)
+from ..sums._common import as_weights, grad_hess, log_loss_margin, predict_input, rebin
 from ..sums._kernels import best_cut_1d, hist_1d
 
 
@@ -161,7 +155,7 @@ def rashomon_mcr(
         w_va = as_weights(sample_weight_val, len(X_va))
 
     target_va = (np.asarray(y_va) == model.classes_[1]).astype(np.float64)
-    base_loss = float(_log_loss(target_va, model.decision_function(X_va), w_va))
+    base_loss = float(log_loss_margin(target_va, model.decision_function(X_va), w_va))
     threshold_loss = base_loss * (1.0 + float(epsilon))
 
     p = int(model.n_features_in_)
@@ -182,7 +176,7 @@ def rashomon_mcr(
         # 1. Node-swap candidate
         swap_m = _node_swap_without_feature(model, j, X_train, y_train, w_tr)
         if swap_m is not None:
-            loss_swap = float(_log_loss(target_va, swap_m.decision_function(X_va), w_va))
+            loss_swap = float(log_loss_margin(target_va, swap_m.decision_function(X_va), w_va))
             cands.append((loss_swap, swap_m))
 
         # 2. Drop-and-regrow candidate (column j masked to constant 0)
@@ -190,7 +184,7 @@ def rashomon_mcr(
         regrow_m = clone(model)
         regrow_m.fit(X_tr_masked, y_train, sample_weight=w_tr)
         if j not in _active_features(regrow_m):
-            loss_regrow = float(_log_loss(target_va, regrow_m.decision_function(X_va), w_va))
+            loss_regrow = float(log_loss_margin(target_va, regrow_m.decision_function(X_va), w_va))
             cands.append((loss_regrow, regrow_m))
 
         best_loss, best_m = min(cands, key=lambda pair: pair[0])

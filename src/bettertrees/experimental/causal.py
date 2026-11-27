@@ -321,8 +321,8 @@ class CausalFIGS(BaseEstimator):
         check_is_fitted(self, "trees_")
         names = self._names(feature_names)
         name = (lambda j: _sql_ident(names[j])) if names is not None else (lambda j: f"x{j}")
-        num = lambda v: _fmt(v, precision)  # noqa: E731
-        cut = lambda v: np.format_float_positional(  # noqa: E731
+        num = lambda v: _fmt(v, precision)
+        cut = lambda v: np.format_float_positional(
             np.float64(v), unique=True, trim="-"
         )
 

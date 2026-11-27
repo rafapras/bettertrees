@@ -273,11 +273,9 @@ def _is_cat_dtype(dtype):
 
         if isinstance(dtype, pd.CategoricalDtype):
             return True
-        if pd.api.types.is_string_dtype(dtype) or dtype == object:
-            return True
-        return False
+        return bool(pd.api.types.is_string_dtype(dtype) or getattr(dtype, "kind", "") == "O")
     except Exception:
-        return dtype == object
+        return getattr(dtype, "kind", "") == "O"
 
 
 def _to_float32_col(col, n):
@@ -646,9 +644,7 @@ class CategoricalInterleavedTreeClassifier(InterleavedTreeClassifier):
                 out = []
                 for j in range(p):
                     col = arr[:, j]
-                    if arr.dtype.kind in ("U", "S"):
-                        out.append(j)
-                    elif any(isinstance(v, str) for v in col):
+                    if arr.dtype.kind in ("U", "S") or any(isinstance(v, str) for v in col):
                         out.append(j)
                 return out
             return []
@@ -998,7 +994,7 @@ class CategoricalInterleavedTreeClassifier(InterleavedTreeClassifier):
         names = self._names(feature_names)
         nan = getattr(self, "nan_features_", None)
         name = (lambda j: str(names[j])) if names is not None else (lambda j: f"x{j}")
-        num = lambda v: f"{v:.{precision}g}"  # noqa: E731
+        num = lambda v: f"{v:.{precision}g}"
         out = []
         for k, tree in enumerate(self.trees_):
             def walk(node, path, tree=tree, k=k):
@@ -1127,7 +1123,7 @@ class CategoricalInterleavedTreeClassifier(InterleavedTreeClassifier):
         names = self._names(feature_names)
         nan = getattr(self, "nan_features_", None)
         name = (lambda j: _sql_ident(names[j])) if names is not None else (lambda j: f"x{j}")
-        num = lambda v: f"{float(v):.{precision}g}"  # noqa: E731
+        num = lambda v: f"{float(v):.{precision}g}"
         def cut(v):
             return np.format_float_positional(np.float64(v), unique=True, trim="-")
 
@@ -1194,8 +1190,8 @@ class CategoricalInterleavedTreeClassifier(InterleavedTreeClassifier):
                     if f in ord_vocabs:
                         vocab = ord_vocabs[f]
 
-                        def _ord_lit(bin_idx, vocab=vocab):
-                            thr = bin_threshold(self.bin_edges_[f], bin_idx)
+                        def _ord_lit(bin_idx, vocab=vocab, edges_f=self.bin_edges_[f]):
+                            thr = bin_threshold(edges_f, bin_idx)
                             k_idx = min(max(int(np.floor(thr)), 0), len(vocab) - 1)
                             return sql_lit(vocab[k_idx])
 

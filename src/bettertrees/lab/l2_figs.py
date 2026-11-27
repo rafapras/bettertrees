@@ -369,13 +369,13 @@ def _grow_l2_figs(est, Xb, nb, target, w, max_splits, max_trees=None):
     cap_val = 0.0 if not has_cap else float(cap_arg)
 
     for _ in range(max_splits):
-        K = len(trees)
-        can_add = max_trees is None or K < max_trees
-        C = K + (1 if can_add else 0)
-        if C == 0:
+        n_trees = len(trees)
+        can_add = max_trees is None or n_trees < max_trees
+        n_cand = n_trees + (1 if can_add else 0)
+        if n_cand == 0:
             break
-        if C > cap_t:
-            new_cap_t = max(C, 2 * cap_t)
+        if n_cand > cap_t:
+            new_cap_t = max(n_cand, 2 * cap_t)
             c_new = np.zeros((new_cap_t, n), dtype=np.float64)
             c_new[:cap_t] = contribs
             contribs = c_new
@@ -397,22 +397,22 @@ def _grow_l2_figs(est, Xb, nb, target, w, max_splits, max_trees=None):
             cap_t = new_cap_t
 
         slot_to_kl = []
-        for k in range(K):
+        for k in range(n_trees):
             leaf_slots[k, : n_nodes_arr[k]] = -1
             for lf in trees[k].leaves:
                 leaf_slots[k, lf] = len(slot_to_kl)
                 slot_to_kl.append((k, lf))
         if can_add:
-            leaf_slots[K, 0] = len(slot_to_kl)
+            leaf_slots[n_trees, 0] = len(slot_to_kl)
             slot_to_kl.append((None, 0))
-            contribs[K].fill(0.0)
-            ids_mat[K].fill(0)
+            contribs[n_trees].fill(0.0)
+            ids_mat[n_trees].fill(0)
         if not slot_to_kl:
             break
 
         _, best_s, f, t = fused_best_split_l2(
-            Xb, nb, target, w, margin, contribs[:C], ids_mat[:C],
-            leaf_slots[:C], len(slot_to_kl), est.lam_, est.min_weight,
+            Xb, nb, target, w, margin, contribs[:n_cand], ids_mat[:n_cand],
+            leaf_slots[:n_cand], len(slot_to_kl), est.lam_, est.min_weight,
         )
         if best_s < 0:
             break
