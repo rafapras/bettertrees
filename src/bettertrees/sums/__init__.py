@@ -3,12 +3,18 @@
 - ``SumOfOptimalTrees``: a few Newton-optimal trees (depth 1-3) with backfitting.
 - ``InterleavedTreeClassifier`` (Interleaved Tree Model; ``FIGSClassifier`` is the same
   class): growth as in FIGS (Tan et al., 2022), full leaf re-fit as in RGF.
+- ``CategoricalInterleavedTreeClassifier`` (alias ``CategoricalFIGSClassifier``):
+  the Interleaved Tree Model with native Fisher+MDL categorical subset splits.
 - ``AdditiveTreeBooster``: a long sum of optimal depth-1/2 trees with early stopping.
 - ``BudgetClassifier``: the no-tuning choice for a cut budget (the ITM).
 """
 
 from .additive import AdditiveTreeBooster
 from .budget import BudgetClassifier
+from .categorical import (
+    CategoricalFIGSClassifier,
+    CategoricalInterleavedTreeClassifier,
+)
 from .compact import CompactTreeBooster
 from .convert import as_tree_sum
 from .imported import LightGBMRefitClassifier, TreeSum, from_lightgbm
@@ -23,6 +29,8 @@ from .smalltrees import (
 __all__ = [
     "AdditiveTreeBooster",
     "BudgetClassifier",
+    "CategoricalFIGSClassifier",
+    "CategoricalInterleavedTreeClassifier",
     "CompactTreeBooster",
     "FIGSClassifier",
     "InterleavedTreeClassifier",

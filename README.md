@@ -206,8 +206,12 @@ at 16:
 
 **Cost.** The ITM is cheaper to obtain because it is not tuned. At 16 cuts on 10–50 thousand
 rows it takes a median of 0.11 seconds against 5.26 seconds for LightGBM tuned with 100 trials
-(median per-dataset ratio 47); above 100 thousand rows the ratio is 2.9 (7.7 against 22.3
-seconds), because the tuned control searches on a 100 thousand-row sample.
+(median per-dataset ratio 47); above 100 thousand rows the fused column-major Numba kernel fits
+1.00M × 31 rows (`BAF_base`) in **5.3 s** (85 ms predict) and 1.66M × 11 rows (`ACSIncome`) in
+**4.4 s** (70 ms predict, 32× faster inference than LightGBM) on 4 cores, while beating 100-trial
+LightGBM (+1.35 pp PR-AUC, 9/10 datasets) and XGBoost (+1.39 pp PR-AUC, 10/10). See
+[`docs/BENCHMARKS.md`](https://github.com/rafapras/bettertrees/blob/main/docs/BENCHMARKS.md)
+for the stacked 38-dataset ROC-AUC, PR-AUC and cost-complexity report.
 
 ## How it works
 
@@ -241,16 +245,20 @@ missing values get a bin of their own and always go left.
 - **The rule** was chosen among about fifty variants on development partitions of the same pool
   of datasets, and the step cap at 4 and 8 cuts was added after the first evaluation results. It
   has not been validated on datasets outside the project.
-- **Ordered numeric inputs.** Thresholds assume that the order of a feature's values means
-  something; integer-coded categories with thousands of levels are better served by native
-  categorical splits.
+- **High-cardinality categoricals.** `InterleavedTreeClassifier` expects ordered numeric inputs;
+  pass a DataFrame with categorical/string columns to `BudgetClassifier` (or use
+  `CategoricalInterleavedTreeClassifier` directly) for Fisher-optimal MDL categorical subset
+  splits, separate missing vs unseen codes, optional `max_subset_size`, and an automatic
+  guardrail (`min_cat_coverage`) that keeps near-unique strings/timestamps ordered instead of
+  collapsing them into `other`.
 
 ## What else is in the package
 
 | estimator | what it is |
 |---|---|
-| `BudgetClassifier` | the ITM with the fixed rule per budget; start here |
+| `BudgetClassifier` | the ITM with the fixed rule per budget (auto-detects categorical DataFrames); start here |
 | `InterleavedTreeClassifier` | the ITM with every setting exposed; `FIGSClassifier` is an alias |
+| `CategoricalInterleavedTreeClassifier` | the ITM with native Fisher+MDL categorical subset splits; `CategoricalFIGSClassifier` is an alias |
 | `SumOfOptimalTrees` | a logit sum of a few optimal (exhaustive search) trees of depth 1–3, with backfitting |
 | `CompactTreeBooster` | shrunken boosting of optimal trees, identical trees merged, budget in distinct cuts |
 | `AdditiveTreeBooster` | a long sum of optimal depth-1/2 trees with early stopping (no budget) |
@@ -285,19 +293,25 @@ model.cut_alternatives(X_val, y_val, tree, node, epsilon=0.01)  # near-equivalen
 
 **Experimental and lab.**
 
-- `bettertrees.experimental` (no API stability guarantee): `ObliqueFIGSClassifier`, the ITM with
-  cuts on linear combinations of two features, which helped at 4 and 8 cuts and added little at
-  16 and 32; `PrecisionTreeClassifier`, a tree whose cuts maximize one class's precision.
+- `bettertrees.experimental` (no API stability guarantee): `ObliqueFIGSClassifier` (oblique
+  cuts on feature pairs), `HingeFIGSClassifier` (quantile-clamped 1-knot piecewise-linear hinges
+  + axis trees), `BudgetRegressor` / `FIGSRegressor` / `SumOfOptimalTreesRegressor`
+  (squared-error and Poisson log-link sums), `CausalFIGS` (orthogonal R-learner CATE sums),
+  `rashomon_mcr` (constructive Model Class Reliance), and `PrecisionTreeClassifier` (a single
+  tree maximizing one class's precision).
 - `bettertrees.lab` is research code from the benchmark with negative or inconclusive results:
-  product terms between trees, bagged and Rashomon structure selection, distillation from a
-  teacher, pair and ratio features, RuleFit, and a multilevel tree of optimal depth-2 blocks.
-  **It is not part of the public API and carries no stability guarantee**; it is kept so that the
-  results can be reproduced.
+  product terms between trees, depth-2 lookahead (`LookaheadFIGSClassifier`), stationary L2
+  backfitting, LightGBM-free compact boosting, sparse L1/L2 sums, bagged and Rashomon structure
+  selection, distillation from a teacher, pair and ratio features, RuleFit, and a multilevel
+  tree of optimal depth-2 blocks. **It is not part of the public API and carries no stability
+  guarantee**; it is kept so that the results can be reproduced.
 
-**Examples.** Three notebooks in [`examples/`](https://github.com/rafapras/bettertrees/tree/main/examples), run by CI on simulated credit data
+**Examples.** Five notebooks in [`examples/`](https://github.com/rafapras/bettertrees/tree/main/examples), run by CI on simulated credit data
 with known effects: [`01_quickstart`](https://github.com/rafapras/bettertrees/blob/main/examples/01_quickstart.ipynb),
-[`02_interpretation`](https://github.com/rafapras/bettertrees/blob/main/examples/02_interpretation.ipynb) and
-[`03_editing`](https://github.com/rafapras/bettertrees/blob/main/examples/03_editing.ipynb).
+[`02_interpretation`](https://github.com/rafapras/bettertrees/blob/main/examples/02_interpretation.ipynb),
+[`03_editing`](https://github.com/rafapras/bettertrees/blob/main/examples/03_editing.ipynb),
+[`04_scorecard_views`](https://github.com/rafapras/bettertrees/blob/main/examples/04_scorecard_views.ipynb) and
+[`05_categorical_and_sql`](https://github.com/rafapras/bettertrees/blob/main/examples/05_categorical_and_sql.ipynb).
 
 ## Credits
 
@@ -324,7 +338,7 @@ A paper on the ITM and the benchmark is in preparation. Until it is out, please 
   title   = {bettertrees: Interleaved Tree Models for binary classification under a budget of cuts},
   author  = {rafapras},
   year    = {2026},
-  version = {0.1.0},
+  version = {0.3.0},
   url     = {https://github.com/rafapras/bettertrees}
 }
 ```

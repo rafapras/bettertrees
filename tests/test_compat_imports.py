@@ -76,6 +76,18 @@ def test_public_surface_is_trimmed():
     assert not {"BaggedFIGSClassifier", "RashomonFIGSClassifier", "fit_multilevel_tree"} & set(
         bettertrees.__all__)
     assert "BoostedOptimalTrees" not in sums.__all__
-    assert sorted(ex.__all__) == ["ObliqueFIGSClassifier", "PrecisionTreeClassifier"]
+    assert sorted(ex.__all__) == [
+        "BudgetRegressor",
+        "CausalFIGS",
+        "FIGSRegressor",
+        "HingeFIGSClassifier",
+        "ObliqueFIGSClassifier",
+        "PrecisionTreeClassifier",
+        "SumOfOptimalTreesRegressor",
+        "feature_importance_shares",
+        "rashomon_mcr",
+    ]
+    assert not {"HingeFIGSClassifier", "LookaheadFIGSClassifier"} & set(bettertrees.__all__)
+    assert not {"LookaheadFIGSClassifier", "SparseTreeSumClassifier"} & set(ex.__all__)
     with pytest.raises(AttributeError):
         bettertrees.no_such_name

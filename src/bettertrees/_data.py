@@ -84,7 +84,7 @@ def prepare_training_data(X, y, sample_weight=None):
     weights = (np.ones(len(X), dtype=np.float64) if sample_weight is None
                else np.asarray(sample_weight, dtype=np.float64))
     if weights.shape != (len(X),) or not np.isfinite(weights).all():
-        raise ValueError("sample_weight deve ser um vetor finito alinhado a X.")
+        raise ValueError("sample_weight must be a finite vector aligned with X.")
     if (weights < 0).any() or not (weights > 0).any():
         raise ValueError("Sample weights must be non-negative with a positive sum.")
     if not np.isfinite(weights.sum()):
@@ -103,7 +103,7 @@ def allocate_nodes(capacity, n_classes):
     masses before publishing the tree; it avoids allocating 2**max_depth up front.
     """
     if capacity < 1 or n_classes < 1:
-        raise ValueError("capacity e n_classes devem ser positivos.")
+        raise ValueError("capacity and n_classes must be positive.")
     return NodeArrays(
         np.full(capacity, -1, dtype=np.int32),
         np.full(capacity, -1, dtype=np.int32),

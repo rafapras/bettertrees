@@ -8,6 +8,7 @@ from numpy.typing import NDArray
 from bettertrees import (
     AdditiveTreeBooster,
     BudgetClassifier,
+    CategoricalInterleavedTreeClassifier,
     CompactTreeBooster,
     FastDecisionTreeClassifier,
     FastDecisionTreeClassifierCV,
@@ -42,6 +43,12 @@ def public_calls(X: NDArray[np.float64], y: NDArray[np.int64], frame: Any,
     refitted: LightGBMRefitClassifier = LightGBMRefitClassifier(max_splits=4).fit(X, y)
     imported: TreeSum = from_lightgbm(lightgbm_model, X, y)
     budget: BudgetClassifier = BudgetClassifier(max_splits=4).fit([[0.0], [1.0]], [0, 1])
+    budget_cat: BudgetClassifier = BudgetClassifier(
+        max_splits=4, categorical_features=None
+    ).fit(X, y)
+    cat_model: CategoricalInterleavedTreeClassifier = (
+        CategoricalInterleavedTreeClassifier(max_splits=4).fit(frame, y)
+    )
     budget_model: InterleavedTreeClassifier = budget.refit_leaves(X, y)
     budget_text: str = budget.explain()
     budget_scores: NDArray[np.float64] = budget.decision_function(X)
@@ -52,5 +59,5 @@ def public_calls(X: NDArray[np.float64], y: NDArray[np.int64], frame: Any,
 
     # Keep every checked result live without actually fitting models in CI here.
     _ = (probabilities, leaves, text, rules, exported, contributions,
-         compact, additive, optimal, refitted, imported, budget_model, budget_text,
-         budget_scores, screening, converted, segments, profiles)
+         compact, additive, optimal, refitted, imported, budget_cat, cat_model,
+         budget_model, budget_text, budget_scores, screening, converted, segments, profiles)

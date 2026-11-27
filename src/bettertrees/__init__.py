@@ -1,11 +1,16 @@
 """Small, readable sums of trees for binary classification, under a budget of cuts.
 
 - ``BudgetClassifier(max_splits=b)``: the recommended start, no tuning: the Interleaved
-  Tree Model with the fixed rule of the benchmark for a budget of b cuts.
+  Tree Model with the fixed rule of the benchmark for a budget of b cuts (automatically
+  uses ``CategoricalInterleavedTreeClassifier`` on DataFrames with categorical columns).
 - ``InterleavedTreeClassifier`` (the Interleaved Tree Model, ITM): a logit sum of small
   trees; each step adds the best cut of any tree (or a new root) by Newton gain and
   re-fits all leaves. Growth from FIGS (Tan et al., 2022), re-fit from RGF.
   ``FIGSClassifier`` is an alias (the same class under its older name).
+- ``CategoricalInterleavedTreeClassifier`` (alias ``CategoricalFIGSClassifier``): the
+  Interleaved Tree Model with Fisher-optimal MDL categorical subset splits, separate
+  missing vs unseen codes, optional ``max_subset_size``, and an automatic guardrail for
+  near-unique strings/timestamps.
 - ``FastDecisionTreeClassifier`` / ``FastDecisionTreeClassifierCV``: a single tree
   (exact and histogram engines), with leaf count and shrinkage chosen by CV.
 - ``SumOfOptimalTrees``: a logit sum of a few Newton-optimal trees (depth 1-3).
@@ -18,10 +23,10 @@
   read as a bettertrees sum (same score), so all the views below apply to them.
 
 The sums (binary classification) expose ``rules()``, ``explain()``, ``to_dict()``,
-``predict_contributions()``, ``plot_shapes()``, ``plot_contributions()``, the scorecard
-views ``segments()``, ``profiles()``, ``plot_profiles()``, ``plot_trees()``,
-``plot_growth()`` and the editing API; the single tree is multiclass and has
-``export_text()``.
+``to_sql()``, ``predict_contributions()``, ``plot_shapes()``, ``plot_contributions()``,
+the scorecard views ``segments()``, ``profiles()``, ``plot_profiles()``,
+``plot_trees()``, ``plot_growth()`` and the editing API; the single tree is multiclass
+and has ``export_text()``.
 ``bettertrees.experimental`` has no API stability guarantee; ``bettertrees.lab`` holds
 research code with negative or inconclusive results (no API, no stability, not public).
 """
@@ -31,6 +36,8 @@ from .estimator import FastDecisionTreeClassifier
 from .sums import (
     AdditiveTreeBooster,
     BudgetClassifier,
+    CategoricalFIGSClassifier,
+    CategoricalInterleavedTreeClassifier,
     CompactTreeBooster,
     FIGSClassifier,
     InterleavedTreeClassifier,
@@ -40,12 +47,24 @@ from .sums import (
     from_lightgbm,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
-__all__ = ["AdditiveTreeBooster", "BudgetClassifier",
-           "CompactTreeBooster", "FIGSClassifier", "FastDecisionTreeClassifier",
-           "FastDecisionTreeClassifierCV", "InterleavedTreeClassifier", "LightGBMRefitClassifier",
-           "SumOfOptimalTrees", "__version__", "as_tree_sum", "from_lightgbm"]
+__all__ = [
+    "AdditiveTreeBooster",
+    "BudgetClassifier",
+    "CategoricalFIGSClassifier",
+    "CategoricalInterleavedTreeClassifier",
+    "CompactTreeBooster",
+    "FIGSClassifier",
+    "FastDecisionTreeClassifier",
+    "FastDecisionTreeClassifierCV",
+    "InterleavedTreeClassifier",
+    "LightGBMRefitClassifier",
+    "SumOfOptimalTrees",
+    "__version__",
+    "as_tree_sum",
+    "from_lightgbm",
+]
 
 
 # moved to bettertrees.lab; still importable from here, resolved on first use (kept for

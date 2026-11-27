@@ -358,6 +358,77 @@ worst = itm.profiles(X_test).loc["worst", "row"]
 fig = itm.plot_trees(X_test.loc[[worst]], X=X_test, bad_label="default")"""),
 ]
 
+NB["05_categorical_and_sql"] = [
+    new_markdown_cell("""\
+# Native categorical splits, unseen categories and SQL export
+
+`BudgetClassifier` automatically uses `CategoricalInterleavedTreeClassifier` when given
+a DataFrame with categorical or string columns. It orders categories by smoothed Newton
+ratio with MDL regularization, separates missing values (`NaN`) from unseen test-time
+categories, keeps near-unique timestamp strings ordered via a coverage guardrail, and
+exports exact ANSI SQL (`IN (...)` / `NOT IN (...)` and `IS NULL`)."""),
+    new_code_cell(SETUP + """
+rng = np.random.default_rng(42)
+regions = np.array(["North", "South", "East", "West", "Central", "O'Connor"])
+reg_idx = rng.integers(0, len(regions), size=len(X))
+days = rng.integers(0, 336, size=len(X))
+ts = [f"2026-{1 + int(d // 28):02d}-{1 + int(d % 28):02d}T{int(i % 86400):05d}Z"
+      for i, d in enumerate(days)]
+X_mix = X.copy()
+X_mix["region"] = pd.Series(regions[reg_idx], dtype="object")
+X_mix.loc[rng.random(len(X)) < 0.04, "region"] = None
+X_mix["application_ts"] = pd.Series(ts, dtype="object")
+logit_extra = 1.2 * np.isin(regions[reg_idx], ["North", "O'Connor"]) + 0.8 * (days > 168)
+y_mix = pd.Series(
+    (rng.random(len(X)) < 1 / (1 + np.exp(-(-2.1 + logit_extra + 0.5 * X["debt_ratio"])))),
+    name="default",
+).astype(int)
+Xm_tr, Xm_te, ym_tr, ym_te = train_test_split(
+    X_mix, y_mix, test_size=0.3, random_state=0, stratify=y_mix)"""),
+    new_markdown_cell("""\
+## Automatic categorical detection & bounded rule length
+
+`BudgetClassifier` handles categoricals automatically; passing `max_subset_size=2` on
+`CategoricalInterleavedTreeClassifier` keeps every categorical rule compact (at most 2
+listed categories per split). Near-unique ISO-8601 timestamps (`application_ts`) trigger
+the automatic coverage guardrail and stay chronologically ordered."""),
+    new_code_cell("""\
+from bettertrees import BudgetClassifier, CategoricalInterleavedTreeClassifier
+
+auto_model = BudgetClassifier(max_splits=8).fit(Xm_tr, ym_tr)
+compact_cat = CategoricalInterleavedTreeClassifier(
+    max_splits=8, max_delta_step=4.0, max_subset_size=2
+).fit(Xm_tr, ym_tr)
+print("Auto model type:", type(auto_model.model_).__name__)
+print("Auto AUC:", round(roc_auc_score(ym_te, auto_model.predict_proba(Xm_te)[:, 1]), 4))
+print("Compact (max_subset_size=2) AUC:",
+      round(roc_auc_score(ym_te, compact_cat.predict_proba(Xm_te)[:, 1]), 4))
+print("Guarded timestamp cols (ordered):", list(compact_cat._ord_vocabs.keys()))
+print("\\n" + compact_cat.explain())"""),
+    new_markdown_cell("""\
+## Missing vs unseen categories and exact SQLite verification
+
+An unseen category at test time (`"BrandNewRegion"`) routes to the majority side of each
+split instead of inheriting missing-value (`None`) risk, and `to_sql()` reproduces
+`decision_function` and `predict_proba` identically inside SQLite."""),
+    new_code_cell("""\
+import math
+import sqlite3
+
+probe = Xm_te.iloc[:100].copy()
+probe.iloc[0, probe.columns.get_loc("region")] = "BrandNewRegion"
+probe.iloc[1, probe.columns.get_loc("region")] = None
+
+sql = compact_cat.to_sql("applicants", precision=17)
+print(sql[:700], "...")
+with sqlite3.connect(":memory:") as con:
+    con.create_function("EXP", 1, math.exp)
+    probe.to_sql("applicants", con, index=False)
+    out = pd.read_sql(sql, con)
+max_diff = float(np.max(np.abs(out["p"].to_numpy() - compact_cat.predict_proba(probe)[:, 1])))
+print(f"\\nMax |SQL p - Python p| across 100 rows (incl. unseen & NULL): {max_diff:.2e}")"""),
+]
+
 
 def build(run):
     for name, cells in NB.items():

@@ -210,3 +210,60 @@ def test_budget_classifier_applies_the_benchmark_rule_and_delegates(budget, kind
         BudgetClassifier(max_splits=0).fit(X, y)
     with pytest.raises(AttributeError):
         BudgetClassifier().explain  # not fitted: nothing to delegate to
+
+
+def test_budget_classifier_categorical_and_experimental_interpretability():
+    import math
+    import sqlite3
+
+    from bettertrees import CategoricalInterleavedTreeClassifier
+    from bettertrees.experimental import HingeFIGSClassifier
+    from bettertrees.lab import LookaheadFIGSClassifier
+
+    X, y = _data(seed=7, n=1200)
+
+    # 1. Auto-detected categorical DataFrame on BudgetClassifier + waterfall + SQLite
+    rng = np.random.default_rng(11)
+    Xc = X.copy()
+    cities = np.array(["SP", "RJ", "BH", "POA", "CUR"])
+    c_idx = rng.integers(0, len(cities), size=len(Xc))
+    Xc["city"] = pd.Series(cities[c_idx], dtype="category")
+    yc = (rng.random(len(Xc)) < 1 / (1 + np.exp(-(Xc["age"] + 1.4 * (c_idx < 2))))).astype(int)
+    mc = BudgetClassifier(max_splits=8).fit(Xc, yc)
+    assert isinstance(mc.model_, CategoricalInterleavedTreeClassifier)
+    cc = mc.predict_contributions(Xc)
+    np.testing.assert_allclose(mc.base_margin_ + cc.sum(axis=1), mc.decision_function(Xc), atol=1e-12)
+    assert mc.rules() and mc.shape_functions()
+    ax_c = mc.plot_contributions(Xc.iloc[0])
+    assert "P =" in ax_c.get_xlabel()
+    with sqlite3.connect(":memory:") as con:
+        con.create_function("EXP", 1, math.exp)
+        Xc.iloc[:50].to_sql("rows", con, index=False)
+        out_c = pd.read_sql(mc.to_sql("rows", precision=17, score_col="logit_score"), con)
+    np.testing.assert_allclose(out_c["logit_score"], mc.decision_function(Xc.iloc[:50]), atol=1e-9)
+
+    # 2. Experimental HingeFIGSClassifier full interpretability + SQLite match
+    mh = HingeFIGSClassifier(max_splits=8).fit(X, y)
+    ch = mh.predict_contributions(X)
+    np.testing.assert_allclose(mh.base_margin_ + ch.sum(axis=1), mh.decision_function(X), atol=1e-12)
+    assert mh.rules() and "hinge 1" in mh.explain()
+    assert json.loads(json.dumps(mh.to_dict()))["hinges"]
+    assert mh.shape_functions()
+    assert mh.plot_shapes().axes
+    ax_h = mh.plot_contributions(X.iloc[0])
+    assert "P =" in ax_h.get_xlabel()
+    with sqlite3.connect(":memory:") as con:
+        con.create_function("EXP", 1, math.exp)
+        X.iloc[:50].to_sql("rows", con, index=False)
+        out = pd.read_sql(mh.to_sql("rows", precision=17, score_col="logit_score"), con)
+    np.testing.assert_allclose(out["logit_score"], mh.decision_function(X.iloc[:50]), atol=1e-9)
+
+    # 3. Lab LookaheadFIGSClassifier
+    ml = LookaheadFIGSClassifier(max_splits=16, learning_rate=0.3, lookahead=True).fit(X, y)
+    cl = ml.predict_contributions(X)
+    np.testing.assert_allclose(ml.base_margin_ + cl.sum(axis=1), ml.decision_function(X), atol=1e-12)
+    assert ml.explain().startswith("logit P(y = 1)")
+
+    # 4. Invalid option guard
+    with pytest.raises(ValueError):
+        BudgetClassifier(max_splits=8, categorical_features="invalid").fit(X, y)

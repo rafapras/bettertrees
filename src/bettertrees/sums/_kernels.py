@@ -490,10 +490,14 @@ def node_hist_margin(Xb, y, w, margin, contrib, node_of_row, n_nodes, B):
     """``node_hist`` of the logistic (g, h) at ``margin - contrib``, computed on the fly.
 
     Same result, bit for bit, as ``grad_hess(y, margin - contrib, w)`` followed by
-    ``node_hist``: every cell sums its rows in increasing i. Features go in blocks
-    (parallel over blocks) and rows are read along the row-major layout of ``Xb``.
+    ``node_hist``: every cell sums its rows in increasing i. Computes (g, h) once
+    per row rather than once per feature block.
     """
     n, p = Xb.shape
+    g = np.empty(n)
+    h = np.empty(n)
+    for i in prange(n):
+        g[i], h[i] = _logistic_gh(margin[i] - contrib[i], y[i], w[i])
     out = np.zeros((n_nodes, p, B, 3))
     BLK = 16
     nblk = (p + BLK - 1) // BLK
@@ -504,13 +508,50 @@ def node_hist_margin(Xb, y, w, margin, contrib, node_of_row, n_nodes, B):
             k = node_of_row[i]
             if k < 0:
                 continue
-            g, h = _logistic_gh(margin[i] - contrib[i], y[i], w[i])
+            gi = g[i]
+            hi = h[i]
+            wi = w[i]
             for j in range(j0, j1):
                 b = Xb[i, j]
-                out[k, j, b, 0] += g
-                out[k, j, b, 1] += h
-                out[k, j, b, 2] += w[i]
+                out[k, j, b, 0] += gi
+                out[k, j, b, 1] += hi
+                out[k, j, b, 2] += wi
     return out
+
+
+@njit(cache=True, parallel=True)
+def best_leaf_cuts_T(XT, nb, y, w, margin, contrib, node_of_row, leaves, n_nodes, B, lam,
+                     min_weight):
+    """Fused histogram + best-cut scan on column-major ``XT`` (p, n).
+
+    Bit-for-bit identical to ``node_hist_margin`` + ``best_cut_1d`` on each leaf:
+    every cell accumulates in increasing row order ``i = 0..n-1``. Uses a small
+    L1-resident ``(n_nodes, B, 3)`` buffer per feature column and avoids allocating
+    the full ``(n_nodes, p, B, 3)`` tensor.
+    """
+    p, n = XT.shape
+    nl = len(leaves)
+    g = np.empty(n)
+    h = np.empty(n)
+    for i in prange(n):
+        g[i], h[i] = _logistic_gh(margin[i] - contrib[i], y[i], w[i])
+    gains = np.zeros((nl, p))
+    cuts = np.full((nl, p), -1, dtype=np.int64)
+    for j in prange(p):
+        col = XT[j]
+        nb_j = nb[j]
+        hj = np.zeros((n_nodes, nb_j, 3))
+        for i in range(n):
+            k = node_of_row[i]
+            if k >= 0:
+                b = col[i]
+                hj[k, b, 0] += g[i]
+                hj[k, b, 1] += h[i]
+                hj[k, b, 2] += w[i]
+        for li in range(nl):
+            leaf = leaves[li]
+            gains[li, j], cuts[li, j] = _best_cut_hist(hj[leaf], nb_j, lam, min_weight)
+    return gains, cuts
 
 
 @njit(cache=True)
